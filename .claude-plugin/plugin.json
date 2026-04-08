@@ -5,12 +5,5 @@
   "author": {
     "name": "GEIDI Pty Ltd"
   },
-  "commands": [
-    "commands/scan-logic.md",
-    "commands/extract-logic.md",
-    "commands/generate-all.md",
-    "commands/check-coverage.md",
-    "commands/export-flows.md",
-    "commands/view-flows.md"
-  ]
+  "commands": "./commands/"
 }
