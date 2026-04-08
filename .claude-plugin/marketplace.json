@@ -9,10 +9,7 @@
     {
       "name": "logic-observability-plugin",
       "description": "Scan code, extract business logic, generate interactive flowcharts and AI context",
-      "source": {
-        "type": "local",
-        "path": "."
-      }
+      "source": "."
     }
   ]
 }
