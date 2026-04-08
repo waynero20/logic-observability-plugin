@@ -1,0 +1,91 @@
+flow: order-processing
+version: 1
+title: Order Processing
+description: >
+  Handles incoming orders — validates payment, checks inventory,
+  and either fulfills the order or notifies the customer of issues.
+service: example-project
+module: src/orders/processor
+status: verified
+last_extracted: 2026-04-08T00:00:00Z
+
+nodes:
+  - id: start
+    type: start
+    label: "Order received"
+
+  - id: validate_payment
+    type: task
+    label: "Validate payment details"
+    code_ref: src/orders/processor.ts:23
+    logic_type: deterministic
+    description: Checks card number format, expiry, and CVV.
+    calls: []
+    reason_codes: []
+
+  - id: check_inventory
+    type: decision
+    label: "Item in stock?"
+    code_ref: src/orders/processor.ts:45
+    logic_type: configurable
+    description: Reads inventory levels from database.
+    calls: [db.from('inventory').select()]
+    reason_codes:
+      - IN_STOCK
+      - OUT_OF_STOCK
+
+  - id: fulfill
+    type: task
+    label: "Fulfill order"
+    code_ref: src/orders/processor.ts:67
+    logic_type: deterministic
+    calls: [shipping.createLabel]
+    reason_codes: []
+
+  - id: notify_out_of_stock
+    type: task
+    label: "Notify customer: out of stock"
+    code_ref: src/orders/processor.ts:82
+    logic_type: deterministic
+    calls: [email.send]
+    reason_codes: []
+
+  - id: end_fulfilled
+    type: end
+    label: "Order shipped"
+
+  - id: end_out_of_stock
+    type: end
+    label: "Customer notified"
+
+edges:
+  - from: start
+    to: validate_payment
+
+  - from: validate_payment
+    to: check_inventory
+
+  - from: check_inventory
+    to: fulfill
+    condition: "in stock"
+    reason_code: IN_STOCK
+
+  - from: check_inventory
+    to: notify_out_of_stock
+    condition: "out of stock"
+    reason_code: OUT_OF_STOCK
+
+  - from: fulfill
+    to: end_fulfilled
+
+  - from: notify_out_of_stock
+    to: end_out_of_stock
+
+entry_point: start
+exit_points:
+  - end_fulfilled
+  - end_out_of_stock
+estimated_duration_ms: 100-500
+error_modes:
+  - "Payment gateway timeout"
+  - "Inventory DB unavailable"

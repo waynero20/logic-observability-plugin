@@ -1,0 +1,13 @@
+{
+  "name": "logic-observability",
+  "version": "1.0.0",
+  "description": "Scan code, extract business logic, generate interactive flowcharts and AI context",
+  "commands": [
+    "commands/scan-logic.md",
+    "commands/extract-logic.md",
+    "commands/generate-all.md",
+    "commands/check-coverage.md",
+    "commands/export-flows.md",
+    "commands/view-flows.md"
+  ]
+}

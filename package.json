@@ -1,0 +1,30 @@
+{
+  "name": "@geidi/logic-observability",
+  "version": "0.1.0",
+  "description": "Scan code, extract business logic, generate interactive flowcharts and AI context",
+  "type": "module",
+  "scripts": {
+    "scan": "tsx scripts/scan-logic.ts",
+    "extract": "tsx scripts/extract-logic.ts",
+    "generate": "tsx scripts/generate-all.ts",
+    "generate:xyflow": "tsx scripts/generators/ir-to-xyflow.ts",
+    "generate:bpmn": "tsx scripts/generators/ir-to-bpmn.ts",
+    "generate:html": "tsx scripts/generators/ir-to-html.ts",
+    "generate:svg": "tsx scripts/generators/ir-to-svg.ts",
+    "generate:summary": "tsx scripts/generators/ir-to-summary.ts",
+    "generate:element-map": "tsx scripts/generators/ir-to-element-map.ts",
+    "validate": "tsx scripts/validate-ir.ts",
+    "check": "tsx scripts/scan-logic.ts --check"
+  },
+  "devDependencies": {
+    "@dagrejs/dagre": "^3.0.0",
+    "@types/js-yaml": "^4.0.9",
+    "@types/node": "^25.5.2",
+    "bpmn-auto-layout": "^1.3.0",
+    "bpmn-moddle": "^10.0.0",
+    "js-yaml": "^4.1.1",
+    "ts-morph": "^27.0.2",
+    "tsx": "^4.21.0",
+    "typescript": "^6.0.2"
+  }
+}

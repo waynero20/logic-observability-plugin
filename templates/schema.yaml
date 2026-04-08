@@ -1,0 +1,156 @@
+# ═══════════════════════════════════════════════════
+# IR Flow File — this describes one logical flow
+# in the system (e.g., one API handler, one decision
+# pipeline, one scheduled job)
+# ═══════════════════════════════════════════════════
+
+# ─── REQUIRED METADATA ───
+
+flow: satisfaction-engine
+  # Machine-readable ID. Kebab-case. Unique across the project.
+  # Derived from module path or function name.
+  # Examples: "message-routing", "daily-report", "user-onboarding"
+
+version: 1
+  # Schema version number. Always 1 for now.
+  # Increment if the schema changes in a breaking way.
+
+title: Satisfaction Engine
+  # Human-readable title. Title case. Used in viewer tabs
+  # and documentation headings. Under 40 characters.
+
+description: >
+  How the system decides if a standup answer is good enough —
+  checks for length, filler words, vague phrases, and asks
+  the AI if all heuristics pass.
+  # Plain English, 1-3 sentences. Written for non-developers.
+  # This appears in flow summaries and viewer tooltips.
+
+service: vox-standup-bot
+  # Project/repo name. Identifies which system this flow belongs to.
+
+module: src/vox/standup/satisfaction
+  # Code directory or file path (without extension).
+  # Tells the developer where to find the source code.
+
+status: draft
+  # "draft" = auto-extracted, not yet developer-reviewed
+  # "verified" = developer has reviewed and approved the labels/structure
+  # Only "verified" IR files are considered trustworthy.
+
+last_extracted: 2026-04-08T10:30:00Z
+  # ISO 8601 timestamp. When the extractor last ran on this flow.
+  # Updated automatically by the extractor.
+
+# ─── NODES ───
+# Each node is one step, decision, or event in the flow.
+# Order in the file doesn't matter — edges define the flow order.
+
+nodes:
+  - id: start
+      # Unique within this flow. Snake_case.
+      # Convention: "start" for entry, "end" or "end_<reason>" for exits.
+    type: start
+      # One of: task, decision, start, end, parallel_split, parallel_join
+    label: "Start"
+      # Business-friendly label. Under 10 words.
+      # Should be understandable by a non-developer.
+      # Bad:  "Call isVagueHeuristic() with params"
+      # Good: "Check for vague language"
+
+  - id: check_override
+    type: decision
+    label: "Full answer override?"
+    code_ref: src/vox/standup/satisfaction.ts:45
+      # OPTIONAL. Exact file:line in the source code.
+      # Only present if the extractor found a specific code location.
+      # Lets developers click through from the diagram to the code.
+    logic_type: deterministic
+      # REQUIRED for task and decision nodes. One of:
+      #   deterministic  — pure code logic, same input = same output
+      #   configurable   — reads from config/settings, behavior changes without code change
+      #   probabilistic  — calls an AI/LLM, output varies
+    description: >
+      Checks if the user's answer contains a full override phrase
+      (e.g., "I already covered that") that bypasses all other checks.
+      # OPTIONAL. Plain English explanation. 1-2 sentences.
+    calls: []
+      # OPTIONAL. List of functions/APIs this step calls.
+      # Examples: ["anthropic.messages.create", "db.from('users').select()"]
+    span_name: null
+      # OPTIONAL. Tracer span name, if the project has runtime tracing.
+      # Example: "vox.standup.satisfaction.score"
+      # Set to null if no tracing exists.
+    decision_point: isSatisfied.fullAnswerOverride
+      # OPTIONAL. Decision logger key, if the project has decision logging.
+      # Set to null if no decision logging exists.
+    reason_codes:
+      - SAT_FULL_ANSWER_OVERRIDE
+      # OPTIONAL. List of outcome codes for this decision.
+      # Empty array if not applicable.
+
+  - id: llm_check
+    type: task
+    label: "Ask AI: is this answer sufficient?"
+    code_ref: src/vox/standup/satisfaction.ts:112
+    logic_type: probabilistic
+    description: >
+      Sends the question and answer to Claude with scoring instructions.
+      The AI rates the answer's relevance and completeness.
+    calls:
+      - anthropic.messages.create
+    span_name: vox.standup.satisfaction.llmCheck
+    decision_point: isSatisfied.llmCheck
+    reason_codes:
+      - SAT_LLM_SATISFIED
+      - SAT_LLM_NOT_SATISFIED
+    model: claude-3-sonnet
+      # OPTIONAL. Only for probabilistic nodes. Which AI model is used.
+    confidence_range: [0.0, 1.0]
+      # OPTIONAL. Only for probabilistic nodes. Expected confidence range.
+
+  - id: end_satisfied
+    type: end
+    label: "Answer accepted"
+
+# ─── EDGES ───
+# Each edge connects two nodes. Order defines nothing — use
+# entry_point and edges to trace the flow.
+
+edges:
+  - from: start
+      # Source node ID. Must exist in nodes list.
+    to: check_override
+      # Target node ID. Must exist in nodes list.
+
+  - from: check_override
+    to: end_satisfied
+    condition: "yes"
+      # OPTIONAL. Human-readable condition for this path.
+      # Only meaningful for edges leaving a decision node.
+    reason_code: SAT_FULL_ANSWER_OVERRIDE
+      # OPTIONAL. Which reason code triggers this path.
+
+  - from: check_override
+    to: llm_check
+    condition: "no"
+
+  - from: llm_check
+    to: end_satisfied
+
+# ─── FLOW-LEVEL METADATA ───
+
+entry_point: start
+  # REQUIRED. The ID of the first node in the flow.
+
+exit_points:
+  - end_satisfied
+  # REQUIRED. List of all terminal node IDs.
+
+estimated_duration_ms: 200-2000
+  # OPTIONAL. Typical execution time range. String, not number.
+
+error_modes:
+  - "LLM timeout after 30s"
+  - "Empty answer (0 words)"
+  # OPTIONAL. Known failure scenarios. Helps with debugging.

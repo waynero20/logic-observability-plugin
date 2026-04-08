@@ -1,0 +1,29 @@
+:root {
+  --bg: #0f0f0f;
+  --bg-surface: #1a1a1a;
+  --bg-elevated: #252525;
+  --text-primary: #e0e0e0;
+  --text-secondary: #999;
+  --text-muted: #666;
+  --accent: #6366f1;
+  --deterministic: #22c55e;
+  --configurable: #f59e0b;
+  --probabilistic: #8b5cf6;
+  --border: #333;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: system-ui, -apple-system, sans-serif;
+  background: var(--bg);
+  color: var(--text-primary);
+  height: 100vh;
+  overflow: hidden;
+}
+
+#root {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
