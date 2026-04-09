@@ -1,0 +1,9 @@
+{
+  "name": "logic-observability-plugin",
+  "version": "0.2.0",
+  "description": "Scan code, extract business logic, generate interactive flowcharts and AI context",
+  "author": {
+    "name": "GEIDI Pty Ltd"
+  },
+  "commands": "./commands/"
+}

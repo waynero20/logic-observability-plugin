@@ -1,0 +1,16 @@
+{
+  "name": "logic-observability",
+  "owner": {
+    "name": "GEIDI Pty Ltd"
+  },
+  "metadata": {
+    "description": "Logic Observability Plugin Marketplace"
+  },
+  "plugins": [
+    {
+      "name": "logic-observability-plugin",
+      "description": "Scan code, extract business logic, generate interactive flowcharts and AI context",
+      "source": "./"
+    }
+  ]
+}
