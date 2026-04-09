@@ -114,7 +114,10 @@ function makeId(prefix: string, ctx: ExtractContext): string {
 
 function toSnakeCase(name: string): string {
   return name
-    .replace(/([A-Z])/g, '_$1')
+    // Keep acronym runs together: "checkLLMResponse" → "check_LLM_Response"
+    .replace(/([A-Z]+)([A-Z][a-z])/g, '$1_$2')
+    // Split camelCase: "checkResponse" → "check_Response"
+    .replace(/([a-z\d])([A-Z])/g, '$1_$2')
     .replace(/^_/, '')
     .replace(/-/g, '_')
     .toLowerCase();
@@ -228,48 +231,52 @@ function walkIfStatement(ifStmt: any, ctx: ExtractContext, previousId: string): 
   ctx.nodes.push(decisionNode);
   ctx.edges.push({ from: previousId, to: decisionId });
 
-  // Then branch
+  // Then branch ("yes" path)
   const thenBlock = ifStmt.getThenStatement();
-  const mergeId = makeId('merge', ctx);
-  // We'll use a task node as a merge point (invisible in practice)
-
   let thenLastId = decisionId;
   if (Node.isBlock(thenBlock)) {
     thenLastId = walkBlock(thenBlock.getStatements(), ctx, decisionId);
   }
+  // Mark the first edge from decision (to then-branch) as "yes"
+  const yesEdge = ctx.edges.find(e => e.from === decisionId && !e.condition);
+  if (yesEdge) yesEdge.condition = 'yes';
 
-  // Else branch
+  // Else branch ("no" path)
   const elseStmt = ifStmt.getElseStatement();
   let elseLastId = decisionId;
   if (elseStmt) {
     if (Node.isIfStatement(elseStmt)) {
       elseLastId = walkIfStatement(elseStmt, ctx, decisionId);
-      const elseEdge = ctx.edges.find(e => e.from === decisionId && e.to !== thenLastId && !e.condition);
+      const elseEdge = ctx.edges.find(e => e.from === decisionId && e.to !== (yesEdge?.to) && !e.condition);
       if (elseEdge) elseEdge.condition = 'no';
     } else if (Node.isBlock(elseStmt)) {
       elseLastId = walkBlock(elseStmt.getStatements(), ctx, decisionId);
       if (elseLastId !== decisionId) {
-        const elseEdge = ctx.edges.find(e => e.from === decisionId && e.to !== thenLastId && !e.condition);
+        const elseEdge = ctx.edges.find(e => e.from === decisionId && e.to !== (yesEdge?.to) && !e.condition);
         if (elseEdge) elseEdge.condition = 'no';
       }
     }
   }
 
-  // Mark the yes edge
-  const yesEdge = ctx.edges.find(e => e.from === decisionId && !e.condition);
-  if (yesEdge) yesEdge.condition = 'yes';
+  // Create merge point for converging paths
+  const mergeId = makeId('merge', ctx);
 
-  // If both branches have different endpoints, we can't easily merge.
-  // Return the then-branch's last node (the caller connects the next step).
-  // If there's no divergence, just return the decision.
+  if (!elseStmt) {
+    // No else: "no" falls through. Create merge point that both paths converge to.
+    const merge: IRNode = { id: mergeId, type: 'task', label: '(merge)', logic_type: 'deterministic' };
+    ctx.nodes.push(merge);
+    // "no" edge from decision to merge (fall-through)
+    ctx.edges.push({ from: decisionId, to: mergeId, condition: 'no' });
+    // then-branch also flows to merge
+    if (thenLastId !== decisionId) {
+      ctx.edges.push({ from: thenLastId, to: mergeId });
+    }
+    return mergeId;
+  }
+
   if (thenLastId !== decisionId && elseLastId !== decisionId && thenLastId !== elseLastId) {
     // Both branches produced nodes — create a merge point
-    const merge: IRNode = {
-      id: mergeId,
-      type: 'task',
-      label: '(merge)',
-      logic_type: 'deterministic',
-    };
+    const merge: IRNode = { id: mergeId, type: 'task', label: '(merge)', logic_type: 'deterministic' };
     ctx.nodes.push(merge);
     ctx.edges.push({ from: thenLastId, to: mergeId });
     ctx.edges.push({ from: elseLastId, to: mergeId });
@@ -323,6 +330,57 @@ function walkSwitchStatement(switchStmt: any, ctx: ExtractContext, previousId: s
   }
 
   return caseEnds.length === 1 ? caseEnds[0] : decisionId;
+}
+
+// ─── Tracer callback unwrapping ───
+
+const TRACER_CALL_PATTERNS = ['tracer.span', 'tracer.startSpan', 'tracer.startTrace', '.startActiveSpan'];
+
+function tryUnwrapTracerCallback(block: Node): Node | null {
+  if (!Node.isBlock(block)) return null;
+  const stmts = (block as any).getStatements();
+  if (!stmts || stmts.length !== 1) return null;
+
+  const stmt = stmts[0];
+  // Handle: return tracer.span(...)
+  let callExpr: Node | undefined;
+  if (Node.isReturnStatement(stmt)) {
+    const expr = stmt.getExpression();
+    if (expr && Node.isCallExpression(expr)) {
+      callExpr = expr;
+    } else if (expr && Node.isAwaitExpression(expr)) {
+      const inner = expr.getExpression();
+      if (inner && Node.isCallExpression(inner)) callExpr = inner;
+    }
+  }
+  // Handle: tracer.span(...) as expression statement
+  if (!callExpr && Node.isExpressionStatement(stmt)) {
+    const expr = stmt.getExpression();
+    if (Node.isCallExpression(expr)) {
+      callExpr = expr;
+    } else if (Node.isAwaitExpression(expr)) {
+      const inner = expr.getExpression();
+      if (inner && Node.isCallExpression(inner)) callExpr = inner;
+    }
+  }
+
+  if (!callExpr || !Node.isCallExpression(callExpr)) return null;
+
+  const callText = (callExpr as any).getExpression().getText();
+  if (!TRACER_CALL_PATTERNS.some(p => callText.includes(p))) return null;
+
+  // Find the callback argument (last argument that is an arrow function or function expression)
+  const args = (callExpr as any).getArguments();
+  for (let i = args.length - 1; i >= 0; i--) {
+    const arg = args[i];
+    if (Node.isArrowFunction(arg) || Node.isFunctionExpression(arg)) {
+      const cbBody = arg.getBody();
+      if (cbBody && Node.isBlock(cbBody)) return cbBody;
+      break;
+    }
+  }
+
+  return null;
 }
 
 // ─── Main extraction ───
@@ -416,12 +474,21 @@ export function extractFunction(
   const startNode: IRNode = { id: 'start', type: 'start', label: 'Start' };
   ctx.nodes.push(startNode);
 
-  // Walk the function body
+  // Walk the function body — unwrap tracer.span/startTrace callbacks
   let body: Node | undefined;
   if (Node.isFunctionDeclaration(targetNode) || Node.isMethodDeclaration(targetNode)) {
     body = targetNode.getBody();
   } else if (Node.isArrowFunction(targetNode)) {
     body = targetNode.getBody();
+  }
+
+  // Check if body is a single return of tracer.span(name, meta, callback)
+  // If so, unwrap and extract from the callback body instead
+  if (body && Node.isBlock(body)) {
+    const unwrapped = tryUnwrapTracerCallback(body);
+    if (unwrapped) {
+      body = unwrapped;
+    }
   }
 
   let lastId = 'start';
@@ -470,16 +537,111 @@ export function extractFunction(
   return flow;
 }
 
+// ─── Label cleanup (--label flag) ───
+
+function cleanLabel(raw: string): string {
+  let label = raw;
+  // Remove common prefixes like this., await, etc.
+  label = label.replace(/^(this\.|await\s+)/, '');
+  // tracer.span('name', ...) → use span name
+  const spanMatch = label.match(/tracer\.\w+\(['"]([^'"]+)['"]/);
+  if (spanMatch) {
+    label = spanMatch[1].replace(/\./g, ' ').replace(/([a-z])([A-Z])/g, '$1 $2');
+  }
+  // Function calls: remove arguments and parens
+  label = label.replace(/\(.*\)$/s, '');
+  // Property access chains: use last meaningful part
+  if (label.includes('.')) {
+    const parts = label.split('.');
+    label = parts[parts.length - 1];
+  }
+  // CamelCase → space separated
+  label = label.replace(/([a-z])([A-Z])/g, '$1 $2');
+  // snake_case → space separated
+  label = label.replace(/_/g, ' ');
+  // Capitalize first letter
+  label = label.charAt(0).toUpperCase() + label.slice(1).toLowerCase();
+  // Trim and limit length
+  label = label.trim();
+  if (label.length > 40) label = label.slice(0, 37) + '...';
+  return label || raw;
+}
+
+function cleanLabels(flow: IRFlow): void {
+  for (const node of flow.nodes) {
+    if (node.type === 'start' || node.type === 'end') continue;
+    if (node.label === '(merge)') continue;
+    node.label = cleanLabel(node.label);
+  }
+  // Re-write the YAML file
+  const outputPath = join(process.cwd(), 'docs', 'flows', `${flow.flow}.yaml`);
+  if (existsSync(outputPath)) {
+    const yamlContent = yaml.dump(flow, { lineWidth: 120, noRefs: true });
+    writeFileSync(outputPath, yamlContent);
+  }
+}
+
+// ─── Extract all exported functions from a file ───
+
+function extractAllExports(filePath: string, outputDir: string, serviceName?: string): IRFlow[] {
+  const project = new Project({ compilerOptions: { allowJs: true } });
+  project.addSourceFilesAtPaths(filePath);
+  const sourceFile = project.getSourceFiles()[0];
+  if (!sourceFile) {
+    console.error(`Could not load: ${filePath}`);
+    return [];
+  }
+
+  const flows: IRFlow[] = [];
+
+  // Exported function declarations
+  for (const fn of sourceFile.getFunctions()) {
+    if (fn.isExported()) {
+      const line = fn.getStartLineNumber();
+      const flow = extractFunction(filePath, line, outputDir, serviceName);
+      if (flow) flows.push(flow);
+    }
+  }
+
+  // Exported arrow functions (const x = () => ...)
+  for (const varStmt of sourceFile.getVariableStatements()) {
+    if (varStmt.isExported()) {
+      for (const decl of varStmt.getDeclarations()) {
+        const init = decl.getInitializer();
+        if (init && (Node.isArrowFunction(init) || Node.isFunctionExpression(init))) {
+          const line = decl.getStartLineNumber();
+          const flow = extractFunction(filePath, line, outputDir, serviceName);
+          if (flow) flows.push(flow);
+        }
+      }
+    }
+  }
+
+  // Exported class methods
+  for (const cls of sourceFile.getClasses()) {
+    if (cls.isExported()) {
+      for (const method of cls.getMethods()) {
+        const line = method.getStartLineNumber();
+        const flow = extractFunction(filePath, line, outputDir, serviceName);
+        if (flow) flows.push(flow);
+      }
+    }
+  }
+
+  return flows;
+}
+
 // ─── CLI ───
 
 const args = process.argv.slice(2);
-const flags = args.filter(a => a.startsWith('--'));
-const positional = args.filter(a => !a.startsWith('--'));
+const flags = args.filter((a: string) => a.startsWith('--'));
+const positional = args.filter((a: string) => !a.startsWith('--'));
 const jsonMode = flags.includes('--json');
+const labelMode = flags.includes('--label');
 
 if (positional.length === 0) {
-  console.error('Usage: tsx scripts/extract-logic.ts <file:line> [<file:line>...] [--json]');
-  console.error('  Or pipe JSON scan results via stdin');
+  console.error('Usage: tsx scripts/extract-logic.ts <file[:line]> [<file[:line]>...] [--json] [--label]');
+  console.error('  If no :line is given, extracts all exported functions from the file.');
   process.exit(1);
 }
 
@@ -487,23 +649,44 @@ const outputDir = join(process.cwd(), 'docs', 'flows');
 const results: IRFlow[] = [];
 
 for (const ref of positional) {
-  const [filePath, lineStr] = ref.split(':');
-  const line = parseInt(lineStr, 10) || 1;
+  const colonIdx = ref.lastIndexOf(':');
+  const hasLine = colonIdx > 0 && !isNaN(parseInt(ref.slice(colonIdx + 1), 10));
 
-  console.log(`Extracting: ${filePath}:${line}...`);
-  const flow = extractFunction(filePath, line, outputDir);
-  if (flow) {
-    // Validate the output
-    const outputPath = join(outputDir, `${flow.flow}.yaml`);
-    const issues = validate(outputPath);
-    const errors = issues.filter(i => !i.startsWith('Warning:'));
-    if (errors.length > 0) {
-      console.error(`  Validation errors for ${flow.flow}:`);
-      errors.forEach(e => console.error(`    - ${e}`));
-    } else {
-      console.log(`  ✓ ${flow.flow}.yaml written and validated`);
+  if (hasLine) {
+    const filePath = ref.slice(0, colonIdx);
+    const line = parseInt(ref.slice(colonIdx + 1), 10);
+    console.log(`Extracting: ${filePath}:${line}...`);
+    const flow = extractFunction(filePath, line, outputDir);
+    if (flow) {
+      if (labelMode) cleanLabels(flow);
+      const outputPath = join(outputDir, `${flow.flow}.yaml`);
+      const issues = validate(outputPath);
+      const errors = issues.filter((i: string) => !i.startsWith('Warning:'));
+      if (errors.length > 0) {
+        console.error(`  Validation errors for ${flow.flow}:`);
+        errors.forEach((e: string) => console.error(`    - ${e}`));
+      } else {
+        console.log(`  ✓ ${flow.flow}.yaml written and validated`);
+      }
+      results.push(flow);
     }
-    results.push(flow);
+  } else {
+    // No line number — extract all exported functions
+    console.log(`Extracting all exports from: ${ref}...`);
+    const flows = extractAllExports(ref, outputDir);
+    for (const flow of flows) {
+      if (labelMode) cleanLabels(flow);
+      const outputPath = join(outputDir, `${flow.flow}.yaml`);
+      const issues = validate(outputPath);
+      const errors = issues.filter((i: string) => !i.startsWith('Warning:'));
+      if (errors.length > 0) {
+        console.error(`  Validation errors for ${flow.flow}:`);
+        errors.forEach((e: string) => console.error(`    - ${e}`));
+      } else {
+        console.log(`  ✓ ${flow.flow}.yaml written and validated`);
+      }
+      results.push(flow);
+    }
   }
 }
 

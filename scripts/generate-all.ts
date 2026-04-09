@@ -1,8 +1,32 @@
 import { execSync } from 'child_process';
 import { join } from 'path';
 
+// ─── Ensure required dependencies are installed ───
+
+const REQUIRED_DEPS = ['@dagrejs/dagre', 'bpmn-moddle', 'bpmn-auto-layout', 'js-yaml'];
+
+function checkAndInstallDeps(): void {
+  const missing: string[] = [];
+  for (const dep of REQUIRED_DEPS) {
+    try {
+      // Use resolve-style check — try importing the package
+      execSync(`node -e "require.resolve('${dep}')"`, { stdio: 'ignore', cwd: process.cwd() });
+    } catch {
+      missing.push(dep);
+    }
+  }
+  if (missing.length > 0) {
+    console.log(`Installing missing dependencies: ${missing.join(', ')}...`);
+    execSync(`npm i -D ${missing.join(' ')}`, { stdio: 'inherit', cwd: process.cwd() });
+    console.log('Dependencies installed.\n');
+  }
+}
+
+checkAndInstallDeps();
+
+// ─── Run generators ───
+
 const generators = ['xyflow', 'bpmn', 'html', 'svg', 'summary', 'element-map'];
-const scriptDir = join(import.meta.dirname || '.', 'generators');
 
 let failed = 0;
 

@@ -1,5 +1,5 @@
 import { existsSync, readFileSync, readdirSync } from 'fs';
-import { join, resolve } from 'path';
+import { join, resolve, dirname } from 'path';
 import yaml from 'js-yaml';
 import { scanProject, type ScanResult, type ScanItem } from './extractors/function-scanner.js';
 
@@ -59,10 +59,23 @@ function loadExistingIR(projectRoot: string): Map<string, string> {
 // ─── Detect project type ───
 
 function detectProjectType(dir: string): 'typescript' | 'dart' | 'python' | 'go' | 'unknown' {
-  if (existsSync(join(dir, 'tsconfig.json')) || existsSync(join(dir, 'package.json'))) return 'typescript';
-  if (existsSync(join(dir, 'pubspec.yaml'))) return 'dart';
-  if (existsSync(join(dir, 'pyproject.toml')) || existsSync(join(dir, 'setup.py')) || existsSync(join(dir, 'requirements.txt'))) return 'python';
-  if (existsSync(join(dir, 'go.mod'))) return 'go';
+  // Walk up from dir to find project config files
+  const searchUp = (startDir: string, filename: string): boolean => {
+    let current = resolve(startDir);
+    const root = resolve('/');
+    while (current !== root) {
+      if (existsSync(join(current, filename))) return true;
+      const parent = dirname(current);
+      if (parent === current) break;
+      current = parent;
+    }
+    return false;
+  };
+
+  if (searchUp(dir, 'tsconfig.json') || searchUp(dir, 'package.json')) return 'typescript';
+  if (searchUp(dir, 'pubspec.yaml')) return 'dart';
+  if (searchUp(dir, 'pyproject.toml') || searchUp(dir, 'setup.py') || searchUp(dir, 'requirements.txt')) return 'python';
+  if (searchUp(dir, 'go.mod')) return 'go';
   return 'unknown';
 }
 

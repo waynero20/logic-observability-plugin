@@ -62,9 +62,28 @@ async function generateBPMN(flow: IRFlow): Promise<string> {
 
   const { xml: xmlWithoutLayout } = await moddle.toXML(definitions, { format: true });
 
-  // Add DI layout
+  // Add DI layout (bpmn-auto-layout produces top-to-bottom)
   const xmlWithLayout = await layoutProcess(xmlWithoutLayout);
-  return xmlWithLayout;
+
+  // Post-process: rotate from top-to-bottom to left-to-right by swapping x/y coordinates
+  const xmlLR = rotateTBtoLR(xmlWithLayout);
+  return xmlLR;
+}
+
+function rotateTBtoLR(xml: string): string {
+  // Swap x and y in dc:Bounds elements
+  let result = xml.replace(
+    /<dc:Bounds\s+x="([^"]+)"\s+y="([^"]+)"\s+width="([^"]+)"\s+height="([^"]+)"/g,
+    (_match, x, y, w, h) => `<dc:Bounds x="${y}" y="${x}" width="${h}" height="${w}"`
+  );
+
+  // Swap x and y in di:waypoint elements
+  result = result.replace(
+    /<di:waypoint\s+x="([^"]+)"\s+y="([^"]+)"/g,
+    (_match, x, y) => `<di:waypoint x="${y}" y="${x}"`
+  );
+
+  return result;
 }
 
 // ─── Main ───
