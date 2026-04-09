@@ -89,7 +89,7 @@ function App() {
 
       <FlowSelector flows={flows} selected={selectedFlowId} onSelect={setSelectedFlowId} />
 
-      {selectedFlow && <FlowCanvas flow={selectedFlow} filter={filter} />}
+      {selectedFlow && <FlowCanvas flow={selectedFlow} filter={filter} search={search} />}
     </>
   );
 }

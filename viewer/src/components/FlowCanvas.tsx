@@ -22,29 +22,37 @@ const nodeTypes: NodeTypes = {
   eventNode: EventNode as any,
 };
 
-export function FlowCanvas({ flow, filter }: { flow: IRFlow; filter: string | null }) {
+export function FlowCanvas({ flow, filter, search }: { flow: IRFlow; filter: string | null; search: string }) {
   const [selectedNode, setSelectedNode] = useState<IRNode | null>(null);
 
   const { nodes, edges } = useMemo(() => {
     const result = layoutFlow(flow.nodes, flow.edges);
+    const searchLower = search.toLowerCase().trim();
 
-    if (filter) {
-      const filteredIds = new Set(
-        flow.nodes
-          .filter(n => n.logic_type === filter)
-          .map(n => n.id)
-      );
-      return {
-        nodes: result.nodes.map(n => ({
+    const hasFilter = !!filter;
+    const hasSearch = searchLower.length > 0;
+
+    if (!hasFilter && !hasSearch) return result;
+
+    const filteredIds = hasFilter
+      ? new Set(flow.nodes.filter(n => n.logic_type === filter).map(n => n.id))
+      : null;
+    const searchIds = hasSearch
+      ? new Set(flow.nodes.filter(n => n.label.toLowerCase().includes(searchLower)).map(n => n.id))
+      : null;
+
+    return {
+      nodes: result.nodes.map(n => {
+        const matchesFilter = !filteredIds || filteredIds.has(n.id);
+        const matchesSearch = !searchIds || searchIds.has(n.id);
+        return {
           ...n,
-          style: filteredIds.has(n.id) || !filter ? {} : { opacity: 0.2 },
-        })),
-        edges: result.edges,
-      };
-    }
-
-    return result;
-  }, [flow, filter]);
+          style: matchesFilter && matchesSearch ? {} : { opacity: 0.2 },
+        };
+      }),
+      edges: result.edges,
+    };
+  }, [flow, filter, search]);
 
   const onNodeClick = useCallback((_: any, node: any) => {
     setSelectedNode(node.data as IRNode);
