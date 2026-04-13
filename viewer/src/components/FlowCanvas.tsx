@@ -67,19 +67,25 @@ export function FlowCanvas({ flow, filter, search }: { flow: IRFlow; filter: str
         onNodeClick={onNodeClick}
         onPaneClick={() => setSelectedNode(null)}
         fitView
-        fitViewOptions={{ padding: 0.3 }}
-        minZoom={0.2}
-        maxZoom={2}
+        fitViewOptions={{ padding: 0.5, minZoom: 0.3, maxZoom: 1.5 }}
+        minZoom={0.1}
+        maxZoom={3}
+        defaultEdgeOptions={{
+          style: { strokeWidth: 2 },
+        }}
         proOptions={{ hideAttribution: true }}
       >
-        <Background variant={BackgroundVariant.Dots} gap={16} size={1} color="#222" />
+        <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="#2a2a2a" />
         <Controls
-          style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 6 }}
+          showInteractive={false}
+          style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 8 }}
         />
         <MiniMap
-          style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 6 }}
-          maskColor="rgba(0,0,0,0.5)"
-          nodeColor="#444"
+          style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 8 }}
+          maskColor="rgba(0,0,0,0.6)"
+          nodeColor="#555"
+          pannable
+          zoomable
         />
       </ReactFlow>
       <NodePanel node={selectedNode} onClose={() => setSelectedNode(null)} />

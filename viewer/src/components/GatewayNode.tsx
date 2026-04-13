@@ -12,39 +12,39 @@ export function GatewayNode({ data, selected }: { data: IRNode; selected?: boole
 
   return (
     <>
-      <Handle type="target" position={Position.Left} style={{ background: '#555' }} />
-      <div style={{ position: 'relative', width: 60, height: 60 }}>
+      <Handle type="target" position={Position.Left} style={{ background: '#555', width: 8, height: 8 }} />
+      <div style={{ position: 'relative', width: 140, height: 80, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         <div
           style={{
             position: 'absolute',
-            width: 44,
-            height: 44,
+            width: 64,
+            height: 64,
             top: 8,
-            left: 8,
+            left: 38,
             background: 'var(--bg-surface)',
             border: `2px solid ${selected ? 'var(--accent)' : color}`,
             transform: 'rotate(45deg)',
             borderRadius: 4,
+            boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
           }}
         />
         <div
           style={{
-            position: 'absolute',
-            top: '50%',
-            left: '50%',
-            transform: 'translate(-50%, -50%)',
-            fontSize: 9,
+            position: 'relative',
+            fontSize: 11,
             color: 'var(--text-primary)',
             textAlign: 'center',
-            maxWidth: 56,
-            lineHeight: 1.2,
+            maxWidth: 130,
+            lineHeight: 1.3,
             zIndex: 1,
+            fontWeight: 500,
+            padding: '0 4px',
           }}
         >
-          {data.label.length > 20 ? data.label.slice(0, 17) + '...' : data.label}
+          {data.label}
         </div>
       </div>
-      <Handle type="source" position={Position.Right} style={{ background: '#555' }} />
+      <Handle type="source" position={Position.Right} style={{ background: '#555', width: 8, height: 8 }} />
     </>
   );
 }

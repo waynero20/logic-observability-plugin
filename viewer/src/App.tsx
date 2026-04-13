@@ -44,14 +44,21 @@ function App() {
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
-        padding: '8px 16px',
+        padding: '10px 20px',
         background: 'var(--bg-surface)',
         borderBottom: '1px solid var(--border)',
       }}>
-        <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>
-          Logic Observer
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-primary)', letterSpacing: -0.3 }}>
+            Logic Observer
+          </div>
+          {selectedFlow && (
+            <span style={{ fontSize: 12, color: 'var(--text-muted)', borderLeft: '1px solid var(--border)', paddingLeft: 10 }}>
+              {selectedFlow.nodes.length} nodes &middot; {selectedFlow.edges.length} edges
+            </span>
+          )}
         </div>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
           <input
             type="text"
             placeholder="Search nodes..."
@@ -60,11 +67,12 @@ function App() {
             style={{
               background: 'var(--bg-elevated)',
               border: '1px solid var(--border)',
-              borderRadius: 4,
-              padding: '4px 8px',
-              fontSize: 12,
+              borderRadius: 6,
+              padding: '6px 12px',
+              fontSize: 13,
               color: 'var(--text-primary)',
-              width: 160,
+              width: 200,
+              outline: 'none',
             }}
           />
           <select
@@ -73,10 +81,11 @@ function App() {
             style={{
               background: 'var(--bg-elevated)',
               border: '1px solid var(--border)',
-              borderRadius: 4,
-              padding: '4px 8px',
-              fontSize: 12,
+              borderRadius: 6,
+              padding: '6px 12px',
+              fontSize: 13,
               color: 'var(--text-primary)',
+              outline: 'none',
             }}
           >
             <option value="">All types</option>

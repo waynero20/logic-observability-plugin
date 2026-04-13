@@ -94,14 +94,14 @@ export function ensureOutputDir(dir?: string): string {
 export function layoutNodes(nodes: IRNode[], edges: IREdge[]): PositionedNode[] {
   const g = new dagre.graphlib.Graph();
   g.setDefaultEdgeLabel(() => ({}));
-  g.setGraph({ rankdir: 'LR', ranksep: 120, nodesep: 60 });
+  g.setGraph({ rankdir: 'LR', ranksep: 200, nodesep: 80, marginx: 40, marginy: 40 });
 
   for (const node of nodes) {
     const dims = node.type === 'task'
-      ? { width: 180, height: 50 }
+      ? { width: 260, height: 64 }
       : ['decision', 'parallel_split', 'parallel_join'].includes(node.type)
-        ? { width: 60, height: 60 }
-        : { width: 40, height: 40 };
+        ? { width: 160, height: 80 }
+        : { width: 80, height: 80 };
     g.setNode(node.id, dims);
   }
 

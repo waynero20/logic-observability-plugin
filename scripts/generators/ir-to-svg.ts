@@ -9,29 +9,29 @@ function nodeToSVG(node: PositionedNode): string {
   switch (node.type) {
     case 'task':
       return `  <g>
-    <rect x="${x}" y="${y}" width="180" height="50" rx="8" fill="${COLORS.nodeBg}" stroke="${fill}" stroke-width="2"/>
-    <text x="${x + 90}" y="${y + 30}" text-anchor="middle" fill="${COLORS.text}" font-size="12" font-family="system-ui, sans-serif">${escapeXml(node.label)}</text>
+    <rect x="${x}" y="${y}" width="260" height="64" rx="10" fill="${COLORS.nodeBg}" stroke="${fill}" stroke-width="2"/>
+    <text x="${x + 130}" y="${y + 36}" text-anchor="middle" fill="${COLORS.text}" font-size="13" font-weight="500" font-family="system-ui, sans-serif">${escapeXml(node.label)}</text>
   </g>`;
     case 'decision':
     case 'parallel_split':
     case 'parallel_join': {
-      const cx = x + 30;
-      const cy = y + 30;
-      const s = 28;
+      const cx = x + 80;
+      const cy = y + 40;
+      const s = 38;
       return `  <g>
     <polygon points="${cx},${cy - s} ${cx + s},${cy} ${cx},${cy + s} ${cx - s},${cy}" fill="${COLORS.nodeBg}" stroke="${fill}" stroke-width="2"/>
-    <text x="${cx}" y="${cy + 4}" text-anchor="middle" fill="${COLORS.text}" font-size="9" font-family="system-ui, sans-serif">${escapeXml(node.label.length > 15 ? node.label.slice(0, 12) + '...' : node.label)}</text>
+    <text x="${cx}" y="${cy + 4}" text-anchor="middle" fill="${COLORS.text}" font-size="11" font-weight="500" font-family="system-ui, sans-serif">${escapeXml(node.label)}</text>
   </g>`;
     }
     case 'start':
       return `  <g>
-    <circle cx="${x + 20}" cy="${y + 20}" r="18" fill="none" stroke="${fill}" stroke-width="2"/>
-    <text x="${x + 20}" y="${y + 24}" text-anchor="middle" fill="${COLORS.text}" font-size="10" font-family="system-ui, sans-serif">${escapeXml(node.label)}</text>
+    <circle cx="${x + 40}" cy="${y + 40}" r="30" fill="none" stroke="${fill}" stroke-width="2"/>
+    <text x="${x + 40}" y="${y + 44}" text-anchor="middle" fill="${COLORS.text}" font-size="12" font-weight="600" font-family="system-ui, sans-serif">${escapeXml(node.label)}</text>
   </g>`;
     case 'end':
       return `  <g>
-    <circle cx="${x + 20}" cy="${y + 20}" r="18" fill="none" stroke="${fill}" stroke-width="3"/>
-    <text x="${x + 20}" y="${y + 24}" text-anchor="middle" fill="${COLORS.text}" font-size="10" font-family="system-ui, sans-serif">${escapeXml(node.label)}</text>
+    <circle cx="${x + 40}" cy="${y + 40}" r="30" fill="none" stroke="${fill}" stroke-width="4"/>
+    <text x="${x + 40}" y="${y + 44}" text-anchor="middle" fill="${COLORS.text}" font-size="12" font-weight="600" font-family="system-ui, sans-serif">${escapeXml(node.label)}</text>
   </g>`;
     default:
       return '';
@@ -50,12 +50,13 @@ function edgeToSVG(edge: IREdge, positioned: PositionedNode[]): string {
 
   const midX = (fromX + toX) / 2;
 
-  let svg = `  <path d="M${fromX},${fromY} C${midX},${fromY} ${midX},${toY} ${toX},${toY}" fill="none" stroke="#555" stroke-width="1.5" marker-end="url(#arrowhead)"/>`;
+  let svg = `  <path d="M${fromX},${fromY} C${midX},${fromY} ${midX},${toY} ${toX},${toY}" fill="none" stroke="#555" stroke-width="2" marker-end="url(#arrowhead)"/>`;
 
   if (edge.condition) {
     const labelX = midX;
-    const labelY = (fromY + toY) / 2 - 8;
-    svg += `\n  <text x="${labelX}" y="${labelY}" text-anchor="middle" fill="#999" font-size="10" font-family="system-ui, sans-serif">${escapeXml(edge.condition)}</text>`;
+    const labelY = (fromY + toY) / 2 - 10;
+    svg += `\n  <rect x="${labelX - 30}" y="${labelY - 12}" width="60" height="18" rx="4" fill="${COLORS.nodeBg}" opacity="0.9"/>`;
+    svg += `\n  <text x="${labelX}" y="${labelY}" text-anchor="middle" fill="#ccc" font-size="12" font-weight="500" font-family="system-ui, sans-serif">${escapeXml(edge.condition)}</text>`;
   }
 
   return svg;
