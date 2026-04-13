@@ -40,13 +40,14 @@ function App() {
 
   return (
     <>
-      <div style={{
+      <div className="header-bar" style={{
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
         padding: '10px 20px',
         background: 'var(--bg-surface)',
         borderBottom: '1px solid var(--border)',
+        flexShrink: 0,
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-primary)', letterSpacing: -0.3 }}>
@@ -58,7 +59,7 @@ function App() {
             </span>
           )}
         </div>
-        <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+        <div className="header-controls" style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
           <input
             type="text"
             placeholder="Search nodes..."
@@ -98,7 +99,9 @@ function App() {
 
       <FlowSelector flows={flows} selected={selectedFlowId} onSelect={setSelectedFlowId} />
 
-      {selectedFlow && <FlowCanvas flow={selectedFlow} filter={filter} search={search} />}
+      <div style={{ flex: 1, minHeight: 0, position: 'relative' }}>
+        {selectedFlow && <FlowCanvas flow={selectedFlow} filter={filter} search={search} />}
+      </div>
     </>
   );
 }

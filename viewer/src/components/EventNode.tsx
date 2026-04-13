@@ -7,26 +7,39 @@ export function EventNode({ data, selected }: { data: IRNode; selected?: boolean
   return (
     <>
       <Handle type="target" position={Position.Left} style={{ background: '#555', width: 8, height: 8 }} />
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
+      <div style={{
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        gap: 8,
+        cursor: 'pointer',
+      }}>
         <div
           style={{
-            width: 56,
-            height: 56,
+            width: 48,
+            height: 48,
             borderRadius: '50%',
             background: 'var(--bg-surface)',
             border: `${isEnd ? 4 : 2}px solid ${selected ? 'var(--accent)' : 'var(--deterministic)'}`,
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            cursor: 'pointer',
             boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
           }}
         >
-          <span style={{ fontSize: 10, color: 'var(--text-primary)', textAlign: 'center', lineHeight: 1.2, fontWeight: 600 }}>
+          <span style={{ fontSize: 10, color: 'var(--text-primary)', fontWeight: 600 }}>
             {isEnd ? 'END' : 'START'}
           </span>
         </div>
-        <div style={{ fontSize: 11, color: 'var(--text-secondary)', textAlign: 'center', maxWidth: 100, lineHeight: 1.3 }}>
+        <div style={{
+          fontSize: 11,
+          color: 'var(--text-secondary)',
+          textAlign: 'center',
+          maxWidth: 140,
+          lineHeight: 1.3,
+          whiteSpace: 'normal',
+          wordBreak: 'break-word',
+        }}>
           {data.label}
         </div>
       </div>

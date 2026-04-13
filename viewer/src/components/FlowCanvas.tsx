@@ -47,7 +47,7 @@ export function FlowCanvas({ flow, filter, search }: { flow: IRFlow; filter: str
         const matchesSearch = !searchIds || searchIds.has(n.id);
         return {
           ...n,
-          style: matchesFilter && matchesSearch ? {} : { opacity: 0.2 },
+          style: matchesFilter && matchesSearch ? {} : { opacity: 0.15 },
         };
       }),
       edges: result.edges,
@@ -59,7 +59,7 @@ export function FlowCanvas({ flow, filter, search }: { flow: IRFlow; filter: str
   }, []);
 
   return (
-    <div style={{ flex: 1, position: 'relative' }}>
+    <div style={{ flex: 1, position: 'relative', width: '100%', height: '100%' }}>
       <ReactFlow
         nodes={nodes}
         edges={edges}
@@ -67,15 +67,16 @@ export function FlowCanvas({ flow, filter, search }: { flow: IRFlow; filter: str
         onNodeClick={onNodeClick}
         onPaneClick={() => setSelectedNode(null)}
         fitView
-        fitViewOptions={{ padding: 0.5, minZoom: 0.3, maxZoom: 1.5 }}
-        minZoom={0.1}
+        fitViewOptions={{ padding: 0.4, minZoom: 0.1, maxZoom: 1.2 }}
+        minZoom={0.05}
         maxZoom={3}
         defaultEdgeOptions={{
           style: { strokeWidth: 2 },
         }}
+        nodesDraggable
         proOptions={{ hideAttribution: true }}
       >
-        <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="#2a2a2a" />
+        <Background variant={BackgroundVariant.Dots} gap={24} size={1} color="#2a2a2a" />
         <Controls
           showInteractive={false}
           style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 8 }}

@@ -17,20 +17,21 @@ export function NodePanel({ node, onClose }: { node: IRNode | null; onClose: () 
       right: 0,
       top: 0,
       bottom: 0,
-      width: 320,
+      width: 'min(320px, 85vw)',
       background: 'var(--bg-surface)',
       borderLeft: '1px solid var(--border)',
-      padding: 20,
+      padding: '16px 18px',
       overflowY: 'auto',
       zIndex: 10,
+      boxShadow: '-4px 0 20px rgba(0,0,0,0.4)',
     }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
-        <h3 style={{ fontSize: 15, fontWeight: 600, lineHeight: 1.3, flex: 1 }}>{node.label}</h3>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 14 }}>
+        <h3 style={{ fontSize: 15, fontWeight: 600, lineHeight: 1.3, flex: 1, wordBreak: 'break-word' }}>{node.label}</h3>
         <button
           onClick={onClose}
-          style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 18, padding: '0 0 0 8px' }}
+          style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 16, padding: '2px 8px', borderRadius: 4, marginLeft: 8, flexShrink: 0 }}
         >
-          ×
+          &times;
         </button>
       </div>
 
@@ -58,7 +59,7 @@ export function NodePanel({ node, onClose }: { node: IRNode | null; onClose: () 
       {node.code_ref && (
         <div style={{ marginBottom: 12 }}>
           <div style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 4 }}>Code Reference</div>
-          <code style={{ fontSize: 12, color: 'var(--accent)', background: 'var(--bg-elevated)', padding: '2px 6px', borderRadius: 3 }}>
+          <code style={{ fontSize: 12, color: 'var(--accent)', background: 'var(--bg-elevated)', padding: '2px 6px', borderRadius: 3, wordBreak: 'break-all' }}>
             {node.code_ref}
           </code>
         </div>
@@ -68,7 +69,7 @@ export function NodePanel({ node, onClose }: { node: IRNode | null; onClose: () 
         <div style={{ marginBottom: 12 }}>
           <div style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 4 }}>Calls</div>
           {node.calls.map((call, i) => (
-            <code key={i} style={{ display: 'block', fontSize: 11, color: 'var(--text-secondary)', background: 'var(--bg-elevated)', padding: '2px 6px', borderRadius: 3, marginBottom: 2 }}>
+            <code key={i} style={{ display: 'block', fontSize: 11, color: 'var(--text-secondary)', background: 'var(--bg-elevated)', padding: '2px 6px', borderRadius: 3, marginBottom: 2, wordBreak: 'break-all' }}>
               {call}
             </code>
           ))}
@@ -78,18 +79,20 @@ export function NodePanel({ node, onClose }: { node: IRNode | null; onClose: () 
       {node.reason_codes && node.reason_codes.length > 0 && (
         <div style={{ marginBottom: 12 }}>
           <div style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 4 }}>Reason Codes</div>
-          {node.reason_codes.map((code, i) => (
-            <span key={i} style={{ display: 'inline-block', fontSize: 11, padding: '2px 6px', borderRadius: 3, background: 'var(--bg-elevated)', color: 'var(--text-secondary)', marginRight: 4, marginBottom: 2 }}>
-              {code}
-            </span>
-          ))}
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+            {node.reason_codes.map((code, i) => (
+              <span key={i} style={{ fontSize: 11, padding: '2px 6px', borderRadius: 3, background: 'var(--bg-elevated)', color: 'var(--text-secondary)' }}>
+                {code}
+              </span>
+            ))}
+          </div>
         </div>
       )}
 
       {node.span_name && (
         <div style={{ marginBottom: 12 }}>
           <div style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 4 }}>Tracer Span</div>
-          <code style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{node.span_name}</code>
+          <code style={{ fontSize: 12, color: 'var(--text-secondary)', wordBreak: 'break-all' }}>{node.span_name}</code>
         </div>
       )}
 

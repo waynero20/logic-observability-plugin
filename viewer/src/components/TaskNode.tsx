@@ -18,12 +18,13 @@ export function TaskNode({ data, selected }: { data: IRNode; selected?: boolean 
           background: 'var(--bg-surface)',
           border: `2px solid ${selected ? 'var(--accent)' : color}`,
           borderRadius: 10,
-          padding: '10px 18px',
-          minWidth: 200,
-          maxWidth: 280,
+          padding: '12px 20px',
+          minWidth: 180,
           textAlign: 'center',
           cursor: 'pointer',
           boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
+          whiteSpace: 'nowrap',
+          overflow: 'visible',
         }}
       >
         <div style={{ fontSize: 13, color: 'var(--text-primary)', lineHeight: 1.4, fontWeight: 500 }}>
