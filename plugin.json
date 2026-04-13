@@ -1,6 +1,6 @@
 {
   "name": "logic-observability",
-  "version": "0.3.0",
+  "version": "1.0.0",
   "description": "Scan code, extract business logic, generate interactive flowcharts and AI context — with confidence model and OTEL enrichment",
   "commands": [
     "commands/scan-logic.md",
