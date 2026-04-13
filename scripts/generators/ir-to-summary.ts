@@ -63,6 +63,17 @@ function generateSummary(flow: IRFlow): string {
     meta += `\n\nKnown error modes: ${flow.error_modes.join('; ')}.`;
   }
 
+  // Confidence summary
+  const runtimeEdges = flow.edges.filter(e => e.runtime?.observed);
+  if (runtimeEdges.length > 0) {
+    meta += `\n\nRuntime-verified paths: ${runtimeEdges.length}/${flow.edges.length}.`;
+  }
+  const staticOnly = flow.nodes.filter(n => n.confidence === 'static_only');
+  const verified = flow.nodes.filter(n => n.confidence === 'static_plus_runtime');
+  if (verified.length > 0 || staticOnly.length > 0) {
+    meta += `\n\nConfidence: ${verified.length} runtime-verified, ${staticOnly.length} static-only step(s).`;
+  }
+
   return `# ${flow.title}\n\n${sentences.join(' ')}${meta}\n`;
 }
 

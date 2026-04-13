@@ -1,0 +1,33 @@
+name: IR Drift Detection
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'docs/flows/**'
+
+jobs:
+  drift-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - run: npm ci
+
+      - name: Check IR coverage and staleness
+        run: npx tsx scripts/scan-logic.ts src/ --check --ci
+        env:
+          CI: true
+
+      - name: Validate all IR files
+        run: |
+          for f in docs/flows/*.yaml; do
+            [ -f "$f" ] || continue
+            npx tsx scripts/validate-ir.ts "$f"
+          done

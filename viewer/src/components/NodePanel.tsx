@@ -100,6 +100,28 @@ export function NodePanel({ node, onClose }: { node: IRNode | null; onClose: () 
         </div>
       )}
 
+      {node.confidence && (
+        <div style={{ marginBottom: 12 }}>
+          <div style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 4 }}>Confidence</div>
+          <span style={{
+            display: 'inline-block',
+            fontSize: 11,
+            padding: '3px 8px',
+            borderRadius: 4,
+            background: node.confidence === 'static_plus_runtime' ? 'rgba(34,197,94,0.15)' :
+                         node.confidence === 'runtime_only' ? 'rgba(59,130,246,0.15)' :
+                         'rgba(156,163,175,0.15)',
+            color: node.confidence === 'static_plus_runtime' ? '#22c55e' :
+                   node.confidence === 'runtime_only' ? '#3b82f6' :
+                   '#9ca3af',
+          }}>
+            {node.confidence === 'static_plus_runtime' ? 'Verified (static + runtime)' :
+             node.confidence === 'runtime_only' ? 'Runtime only' :
+             'Static only'}
+          </span>
+        </div>
+      )}
+
       <div style={{ marginTop: 16, fontSize: 10, color: 'var(--text-muted)' }}>
         Type: {node.type} | ID: {node.id}
       </div>

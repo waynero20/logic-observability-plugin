@@ -13,12 +13,14 @@ nodes:
   - id: start
     type: start
     label: "Order received"
+    confidence: static_only
 
   - id: validate_payment
     type: task
     label: "Validate payment details"
     code_ref: src/orders/processor.ts:23
     logic_type: deterministic
+    confidence: static_plus_runtime
     description: Checks card number format, expiry, and CVV.
     calls: []
     reason_codes: []
@@ -28,6 +30,7 @@ nodes:
     label: "Item in stock?"
     code_ref: src/orders/processor.ts:45
     logic_type: configurable
+    confidence: static_plus_runtime
     description: Reads inventory levels from database.
     calls: [db.from('inventory').select()]
     reason_codes:
@@ -39,6 +42,7 @@ nodes:
     label: "Fulfill order"
     code_ref: src/orders/processor.ts:67
     logic_type: deterministic
+    confidence: static_plus_runtime
     calls: [shipping.createLabel]
     reason_codes: []
 
@@ -47,39 +51,58 @@ nodes:
     label: "Notify customer: out of stock"
     code_ref: src/orders/processor.ts:82
     logic_type: deterministic
+    confidence: static_only
     calls: [email.send]
     reason_codes: []
 
   - id: end_fulfilled
     type: end
     label: "Order shipped"
+    confidence: static_only
 
   - id: end_out_of_stock
     type: end
     label: "Customer notified"
+    confidence: static_only
 
 edges:
   - from: start
     to: validate_payment
+    confidence: static_only
 
   - from: validate_payment
     to: check_inventory
+    confidence: static_plus_runtime
 
   - from: check_inventory
     to: fulfill
     condition: "in stock"
     reason_code: IN_STOCK
+    confidence: static_plus_runtime
+    runtime:
+      observed: true
+      frequency: 0.82
+      error_rate: 0.01
+      avg_latency_ms: 120
 
   - from: check_inventory
     to: notify_out_of_stock
     condition: "out of stock"
     reason_code: OUT_OF_STOCK
+    confidence: static_plus_runtime
+    runtime:
+      observed: true
+      frequency: 0.18
+      error_rate: 0.0
+      avg_latency_ms: 5
 
   - from: fulfill
     to: end_fulfilled
+    confidence: static_only
 
   - from: notify_out_of_stock
     to: end_out_of_stock
+    confidence: static_only
 
 entry_point: start
 exit_points:

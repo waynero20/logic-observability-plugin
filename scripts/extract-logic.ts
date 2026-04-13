@@ -6,12 +6,22 @@ import { validate } from './validate-ir.js';
 
 // ─── Types ───
 
+type ConfidenceLevel = 'static_only' | 'runtime_only' | 'static_plus_runtime';
+
+interface RuntimeData {
+  observed: boolean;
+  frequency?: number;
+  error_rate?: number;
+  avg_latency_ms?: number;
+}
+
 interface IRNode {
   id: string;
   type: 'task' | 'decision' | 'start' | 'end' | 'parallel_split' | 'parallel_join';
   label: string;
   code_ref?: string;
   logic_type?: 'deterministic' | 'configurable' | 'probabilistic';
+  confidence?: ConfidenceLevel;
   description?: string;
   calls?: string[];
   span_name?: string | null;
@@ -26,6 +36,8 @@ interface IREdge {
   to: string;
   condition?: string;
   reason_code?: string;
+  confidence?: ConfidenceLevel;
+  runtime?: RuntimeData;
 }
 
 interface IRFlow {
@@ -139,6 +151,7 @@ function extractCallNode(call: Node, ctx: ExtractContext): string {
     label: callName,
     code_ref: `${ctx.filePath}:${call.getStartLineNumber()}`,
     logic_type: logicType,
+    confidence: 'static_only',
     calls,
     span_name: null,
     decision_point: null,
@@ -165,13 +178,13 @@ function walkBlock(statements: Node[], ctx: ExtractContext, previousId: string):
       const expr = stmt.getExpression();
       if (Node.isCallExpression(expr)) {
         const callId = extractCallNode(expr, ctx);
-        ctx.edges.push({ from: lastId, to: callId });
+        ctx.edges.push({ from: lastId, to: callId, confidence: 'static_only' });
         lastId = callId;
       } else if (Node.isAwaitExpression(expr)) {
         const inner = expr.getExpression();
         if (inner && Node.isCallExpression(inner)) {
           const callId = extractCallNode(inner, ctx);
-          ctx.edges.push({ from: lastId, to: callId });
+          ctx.edges.push({ from: lastId, to: callId, confidence: 'static_only' });
           lastId = callId;
         }
       }
@@ -181,13 +194,13 @@ function walkBlock(statements: Node[], ctx: ExtractContext, previousId: string):
         const init = decl.getInitializer();
         if (init && Node.isCallExpression(init)) {
           const callId = extractCallNode(init, ctx);
-          ctx.edges.push({ from: lastId, to: callId });
+          ctx.edges.push({ from: lastId, to: callId, confidence: 'static_only' });
           lastId = callId;
         } else if (init && Node.isAwaitExpression(init)) {
           const inner = init.getExpression();
           if (inner && Node.isCallExpression(inner)) {
             const callId = extractCallNode(inner, ctx);
-            ctx.edges.push({ from: lastId, to: callId });
+            ctx.edges.push({ from: lastId, to: callId, confidence: 'static_only' });
             lastId = callId;
           }
         }
@@ -196,7 +209,7 @@ function walkBlock(statements: Node[], ctx: ExtractContext, previousId: string):
       const expr = stmt.getExpression();
       if (expr && Node.isCallExpression(expr)) {
         const callId = extractCallNode(expr, ctx);
-        ctx.edges.push({ from: lastId, to: callId });
+        ctx.edges.push({ from: lastId, to: callId, confidence: 'static_only' });
         lastId = callId;
       }
     } else if (Node.isTryStatement(stmt)) {
@@ -226,10 +239,11 @@ function walkIfStatement(ifStmt: any, ctx: ExtractContext, previousId: string): 
     label: conditionText.length > 40 ? conditionText.slice(0, 37) + '...' : conditionText,
     code_ref: `${ctx.filePath}:${ifStmt.getStartLineNumber()}`,
     logic_type: classifyLogicType([], conditionText),
+    confidence: 'static_only',
     reason_codes: [],
   };
   ctx.nodes.push(decisionNode);
-  ctx.edges.push({ from: previousId, to: decisionId });
+  ctx.edges.push({ from: previousId, to: decisionId, confidence: 'static_only' });
 
   // Then branch ("yes" path)
   const thenBlock = ifStmt.getThenStatement();
@@ -263,23 +277,23 @@ function walkIfStatement(ifStmt: any, ctx: ExtractContext, previousId: string): 
 
   if (!elseStmt) {
     // No else: "no" falls through. Create merge point that both paths converge to.
-    const merge: IRNode = { id: mergeId, type: 'task', label: '(merge)', logic_type: 'deterministic' };
+    const merge: IRNode = { id: mergeId, type: 'task', label: '(merge)', logic_type: 'deterministic', confidence: 'static_only' };
     ctx.nodes.push(merge);
     // "no" edge from decision to merge (fall-through)
-    ctx.edges.push({ from: decisionId, to: mergeId, condition: 'no' });
+    ctx.edges.push({ from: decisionId, to: mergeId, condition: 'no', confidence: 'static_only' });
     // then-branch also flows to merge
     if (thenLastId !== decisionId) {
-      ctx.edges.push({ from: thenLastId, to: mergeId });
+      ctx.edges.push({ from: thenLastId, to: mergeId, confidence: 'static_only' });
     }
     return mergeId;
   }
 
   if (thenLastId !== decisionId && elseLastId !== decisionId && thenLastId !== elseLastId) {
     // Both branches produced nodes — create a merge point
-    const merge: IRNode = { id: mergeId, type: 'task', label: '(merge)', logic_type: 'deterministic' };
+    const merge: IRNode = { id: mergeId, type: 'task', label: '(merge)', logic_type: 'deterministic', confidence: 'static_only' };
     ctx.nodes.push(merge);
-    ctx.edges.push({ from: thenLastId, to: mergeId });
-    ctx.edges.push({ from: elseLastId, to: mergeId });
+    ctx.edges.push({ from: thenLastId, to: mergeId, confidence: 'static_only' });
+    ctx.edges.push({ from: elseLastId, to: mergeId, confidence: 'static_only' });
     return mergeId;
   }
 
@@ -296,10 +310,11 @@ function walkSwitchStatement(switchStmt: any, ctx: ExtractContext, previousId: s
     label: exprText.length > 40 ? exprText.slice(0, 37) + '...' : exprText,
     code_ref: `${ctx.filePath}:${switchStmt.getStartLineNumber()}`,
     logic_type: classifyLogicType([], exprText),
+    confidence: 'static_only',
     reason_codes: [],
   };
   ctx.nodes.push(decisionNode);
-  ctx.edges.push({ from: previousId, to: decisionId });
+  ctx.edges.push({ from: previousId, to: decisionId, confidence: 'static_only' });
 
   const caseEnds: string[] = [];
   for (const clause of switchStmt.getClauses()) {
@@ -321,10 +336,10 @@ function walkSwitchStatement(switchStmt: any, ctx: ExtractContext, previousId: s
   // If multiple case branches, create merge
   if (caseEnds.length > 1) {
     const mergeId = makeId('merge', ctx);
-    const merge: IRNode = { id: mergeId, type: 'task', label: '(merge)', logic_type: 'deterministic' };
+    const merge: IRNode = { id: mergeId, type: 'task', label: '(merge)', logic_type: 'deterministic', confidence: 'static_only' };
     ctx.nodes.push(merge);
     for (const end of caseEnds) {
-      ctx.edges.push({ from: end, to: mergeId });
+      ctx.edges.push({ from: end, to: mergeId, confidence: 'static_only' });
     }
     return mergeId;
   }
@@ -471,7 +486,7 @@ export function extractFunction(
   };
 
   // Start node
-  const startNode: IRNode = { id: 'start', type: 'start', label: 'Start' };
+  const startNode: IRNode = { id: 'start', type: 'start', label: 'Start', confidence: 'static_only' };
   ctx.nodes.push(startNode);
 
   // Walk the function body — unwrap tracer.span/startTrace callbacks
@@ -497,9 +512,9 @@ export function extractFunction(
   }
 
   // End node
-  const endNode: IRNode = { id: 'end', type: 'end', label: 'End' };
+  const endNode: IRNode = { id: 'end', type: 'end', label: 'End', confidence: 'static_only' };
   ctx.nodes.push(endNode);
-  ctx.edges.push({ from: lastId, to: 'end' });
+  ctx.edges.push({ from: lastId, to: 'end', confidence: 'static_only' });
 
   // Find tracer span and attach to first task node if found
   const spanName = findTracerSpan(targetNode);

@@ -26,7 +26,7 @@ checkAndInstallDeps();
 
 // ─── Run generators ───
 
-const generators = ['xyflow', 'bpmn', 'html', 'svg', 'summary', 'element-map'];
+const generators = ['xyflow', 'bpmn', 'xml', 'html', 'svg', 'summary', 'context', 'element-map'];
 
 let failed = 0;
 

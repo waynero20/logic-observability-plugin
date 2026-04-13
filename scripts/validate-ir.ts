@@ -3,6 +3,7 @@ import yaml from 'js-yaml';
 
 const VALID_NODE_TYPES = ['task', 'decision', 'start', 'end', 'parallel_split', 'parallel_join'];
 const VALID_LOGIC_TYPES = ['deterministic', 'configurable', 'probabilistic'];
+const VALID_CONFIDENCE_LEVELS = ['static_only', 'runtime_only', 'static_plus_runtime'];
 const VALID_STATUSES = ['draft', 'verified'];
 
 interface IRNode {
@@ -10,13 +11,23 @@ interface IRNode {
   type: string;
   label: string;
   logic_type?: string;
+  confidence?: string;
   [key: string]: unknown;
+}
+
+interface RuntimeData {
+  observed?: boolean;
+  frequency?: number;
+  error_rate?: number;
+  avg_latency_ms?: number;
 }
 
 interface IREdge {
   from: string;
   to: string;
   condition?: string;
+  confidence?: string;
+  runtime?: RuntimeData;
   [key: string]: unknown;
 }
 
@@ -76,6 +87,9 @@ export function validate(filePath: string): string[] {
         errors.push(`Node "${node.id}" has invalid logic_type "${node.logic_type}"`);
       }
     }
+    if (node.confidence && !VALID_CONFIDENCE_LEVELS.includes(node.confidence)) {
+      errors.push(`Node "${node.id}" has invalid confidence "${node.confidence}"`);
+    }
   }
 
   // Edges
@@ -84,6 +98,20 @@ export function validate(filePath: string): string[] {
     for (const edge of ir.edges) {
       if (!nodeIds.has(edge.from)) errors.push(`Edge references unknown source node: "${edge.from}"`);
       if (!nodeIds.has(edge.to)) errors.push(`Edge references unknown target node: "${edge.to}"`);
+      if (edge.confidence && !VALID_CONFIDENCE_LEVELS.includes(edge.confidence)) {
+        errors.push(`Edge ${edge.from}→${edge.to} has invalid confidence "${edge.confidence}"`);
+      }
+      if (edge.runtime) {
+        if (typeof edge.runtime.observed !== 'boolean') {
+          warnings.push(`Warning: edge ${edge.from}→${edge.to} runtime.observed should be boolean`);
+        }
+        if (edge.runtime.frequency !== undefined && (edge.runtime.frequency < 0 || edge.runtime.frequency > 1)) {
+          errors.push(`Edge ${edge.from}→${edge.to} runtime.frequency must be 0.0–1.0`);
+        }
+        if (edge.runtime.error_rate !== undefined && (edge.runtime.error_rate < 0 || edge.runtime.error_rate > 1)) {
+          errors.push(`Edge ${edge.from}→${edge.to} runtime.error_rate must be 0.0–1.0`);
+        }
+      }
     }
   }
 

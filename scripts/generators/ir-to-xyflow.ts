@@ -18,6 +18,7 @@ function generateXYFlow(flow: IRFlow): string {
         label: node.label,
         nodeType: node.type,
         logicType: node.logic_type || null,
+        confidence: node.confidence || null,
         codeRef: node.code_ref || null,
         description: node.description || null,
         calls: node.calls || [],
@@ -36,6 +37,10 @@ function generateXYFlow(flow: IRFlow): string {
     type: 'smoothstep',
     label: edge.condition || undefined,
     animated: false,
+    data: {
+      confidence: edge.confidence || null,
+      runtime: edge.runtime || null,
+    },
   }));
 
   return JSON.stringify({ nodes, edges }, null, 2);

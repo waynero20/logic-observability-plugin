@@ -6,12 +6,15 @@
   "scripts": {
     "scan": "tsx scripts/scan-logic.ts",
     "extract": "tsx scripts/extract-logic.ts",
+    "enrich": "tsx scripts/enrich-runtime.ts",
     "generate": "tsx scripts/generate-all.ts",
     "generate:xyflow": "tsx scripts/generators/ir-to-xyflow.ts",
     "generate:bpmn": "tsx scripts/generators/ir-to-bpmn.ts",
+    "generate:xml": "tsx scripts/generators/ir-to-xml.ts",
     "generate:html": "tsx scripts/generators/ir-to-html.ts",
     "generate:svg": "tsx scripts/generators/ir-to-svg.ts",
     "generate:summary": "tsx scripts/generators/ir-to-summary.ts",
+    "generate:context": "tsx scripts/generators/ir-to-context.ts",
     "generate:element-map": "tsx scripts/generators/ir-to-element-map.ts",
     "validate": "tsx scripts/validate-ir.ts",
     "check": "tsx scripts/scan-logic.ts --check"

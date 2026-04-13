@@ -57,6 +57,9 @@ nodes:
       # Should be understandable by a non-developer.
       # Bad:  "Call isVagueHeuristic() with params"
       # Good: "Check for vague language"
+    confidence: static_only
+      # REQUIRED. How this node was derived.
+      # One of: static_only, runtime_only, static_plus_runtime
 
   - id: check_override
     type: decision
@@ -70,6 +73,11 @@ nodes:
       #   deterministic  — pure code logic, same input = same output
       #   configurable   — reads from config/settings, behavior changes without code change
       #   probabilistic  — calls an AI/LLM, output varies
+    confidence: static_only
+      # REQUIRED. How this node was derived. One of:
+      #   static_only          — inferred from code, not yet observed in production
+      #   runtime_only         — observed in traces but not yet statically mapped
+      #   static_plus_runtime  — verified by both static analysis and runtime evidence
     description: >
       Checks if the user's answer contains a full override phrase
       (e.g., "I already covered that") that bypasses all other checks.
@@ -94,6 +102,7 @@ nodes:
     label: "Ask AI: is this answer sufficient?"
     code_ref: src/vox/standup/satisfaction.ts:112
     logic_type: probabilistic
+    confidence: static_plus_runtime
     description: >
       Sends the question and answer to Claude with scoring instructions.
       The AI rates the answer's relevance and completeness.
@@ -130,13 +139,29 @@ edges:
       # Only meaningful for edges leaving a decision node.
     reason_code: SAT_FULL_ANSWER_OVERRIDE
       # OPTIONAL. Which reason code triggers this path.
+    confidence: static_only
+      # REQUIRED. Same as node confidence — how this edge was derived.
+      # One of: static_only, runtime_only, static_plus_runtime
+    runtime:
+      # OPTIONAL. Populated by OTEL enrichment (Phase 3).
+      # Absent until runtime traces are mapped to this edge.
+      observed: true
+        # Has this path been seen in production traces?
+      frequency: 0.18
+        # Proportion of executions that take this path (0.0–1.0)
+      error_rate: 0.0
+        # Proportion of executions on this path that error (0.0–1.0)
+      avg_latency_ms: 5
+        # Average latency in milliseconds for this path
 
   - from: check_override
     to: llm_check
     condition: "no"
+    confidence: static_only
 
   - from: llm_check
     to: end_satisfied
+    confidence: static_only
 
 # ─── FLOW-LEVEL METADATA ───
 
