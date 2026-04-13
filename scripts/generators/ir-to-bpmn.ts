@@ -3,21 +3,34 @@ import { join } from 'path';
 import { loadFlows, ensureOutputDir, type IRFlow } from './shared.js';
 import dagre from '@dagrejs/dagre';
 
-function irTypeToBpmn(type: string): string {
+// BPMN 2.0 XML element names are camelCase per the XSD
+function irTypeToBpmnTag(type: string): string {
   switch (type) {
-    case 'task': return 'bpmn:ServiceTask';
-    case 'decision': return 'bpmn:ExclusiveGateway';
-    case 'start': return 'bpmn:StartEvent';
-    case 'end': return 'bpmn:EndEvent';
+    case 'task': return 'serviceTask';
+    case 'decision': return 'exclusiveGateway';
+    case 'start': return 'startEvent';
+    case 'end': return 'endEvent';
     case 'parallel_split':
-    case 'parallel_join': return 'bpmn:ParallelGateway';
-    default: return 'bpmn:ServiceTask';
+    case 'parallel_join': return 'parallelGateway';
+    default: return 'serviceTask';
   }
 }
 
+function isGateway(type: string): boolean {
+  return ['decision', 'parallel_split', 'parallel_join'].includes(type);
+}
+
 function sanitizeId(id: string): string {
-  // BPMN IDs must start with a letter or underscore
   return id.replace(/[^a-zA-Z0-9_]/g, '_').replace(/^(\d)/, '_$1');
+}
+
+function escapeXml(text: string): string {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
 }
 
 function generateBPMN(flow: IRFlow): string {
@@ -29,7 +42,7 @@ function generateBPMN(flow: IRFlow): string {
   for (const node of flow.nodes) {
     const dims = node.type === 'task'
       ? { width: 200, height: 80 }
-      : ['decision', 'parallel_split', 'parallel_join'].includes(node.type)
+      : isGateway(node.type)
         ? { width: 50, height: 50 }
         : { width: 36, height: 36 };
     g.setNode(node.id, dims);
@@ -40,8 +53,6 @@ function generateBPMN(flow: IRFlow): string {
   dagre.layout(g);
 
   const processId = `Process_${sanitizeId(flow.flow)}`;
-  const collaborationId = `Collaboration_${sanitizeId(flow.flow)}`;
-  const participantId = `Participant_${sanitizeId(flow.flow)}`;
 
   // Build incoming/outgoing maps
   const incoming = new Map<string, string[]>();
@@ -54,21 +65,25 @@ function generateBPMN(flow: IRFlow): string {
     incoming.get(edge.to)!.push(flowId);
   });
 
-  // ─── Build XML manually for full control ───
+  // ─── Build XML ───
   const lines: string[] = [];
   lines.push('<?xml version="1.0" encoding="UTF-8"?>');
-  lines.push('<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"');
+  lines.push('<bpmn:definitions');
+  lines.push('  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"');
+  lines.push('  xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"');
   lines.push('  xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"');
   lines.push('  xmlns:dc="http://www.omg.org/spec/DD/20100524/DC"');
   lines.push('  xmlns:di="http://www.omg.org/spec/DD/20100524/DI"');
-  lines.push(`  id="Definitions_1" targetNamespace="http://geidi.com/logic-observability">`);
+  lines.push('  id="Definitions_1"');
+  lines.push('  targetNamespace="http://bpmn.io/schema/bpmn"');
+  lines.push('  exporter="logic-observability-plugin"');
+  lines.push('  exporterVersion="1.0.0">');
 
   // Process
   lines.push(`  <bpmn:process id="${processId}" name="${escapeXml(flow.title)}" isExecutable="true">`);
 
   for (const node of flow.nodes) {
-    const bpmnType = irTypeToBpmn(node.type);
-    const tag = bpmnType.replace('bpmn:', '');
+    const tag = irTypeToBpmnTag(node.type);
     const nodeId = sanitizeId(node.id);
     const inRefs = incoming.get(node.id) || [];
     const outRefs = outgoing.get(node.id) || [];
@@ -88,8 +103,8 @@ function generateBPMN(flow: IRFlow): string {
 
   lines.push('  </bpmn:process>');
 
-  // ─── Diagram Interchange (DI) — required by Camunda ───
-  lines.push(`  <bpmndi:BPMNDiagram id="BPMNDiagram_1">`);
+  // ─── Diagram Interchange (DI) ───
+  lines.push('  <bpmndi:BPMNDiagram id="BPMNDiagram_1">');
   lines.push(`    <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="${processId}">`);
 
   // Node shapes
@@ -98,10 +113,11 @@ function generateBPMN(flow: IRFlow): string {
     const nodeId = sanitizeId(node.id);
     const x = Math.round(pos.x - pos.width / 2);
     const y = Math.round(pos.y - pos.height / 2);
+    const markerAttr = isGateway(node.type) ? ' isMarkerVisible="true"' : '';
 
-    lines.push(`      <bpmndi:BPMNShape id="${nodeId}_di" bpmnElement="${nodeId}">`);
+    lines.push(`      <bpmndi:BPMNShape id="${nodeId}_di" bpmnElement="${nodeId}"${markerAttr}>`);
     lines.push(`        <dc:Bounds x="${x}" y="${y}" width="${pos.width}" height="${pos.height}"/>`);
-    lines.push(`      </bpmndi:BPMNShape>`);
+    lines.push('      </bpmndi:BPMNShape>');
   }
 
   // Edge shapes with waypoints
@@ -110,7 +126,6 @@ function generateBPMN(flow: IRFlow): string {
     const fromPos = g.node(edge.from);
     const toPos = g.node(edge.to);
 
-    // Source: right side of node, Target: left side of node
     const fromX = Math.round(fromPos.x + fromPos.width / 2);
     const fromY = Math.round(fromPos.y);
     const toX = Math.round(toPos.x - toPos.width / 2);
@@ -118,14 +133,13 @@ function generateBPMN(flow: IRFlow): string {
 
     lines.push(`      <bpmndi:BPMNEdge id="${flowId}_di" bpmnElement="${flowId}">`);
     lines.push(`        <di:waypoint x="${fromX}" y="${fromY}"/>`);
-    // Add midpoint if not a straight line
     if (fromY !== toY) {
       const midX = Math.round((fromX + toX) / 2);
       lines.push(`        <di:waypoint x="${midX}" y="${fromY}"/>`);
       lines.push(`        <di:waypoint x="${midX}" y="${toY}"/>`);
     }
     lines.push(`        <di:waypoint x="${toX}" y="${toY}"/>`);
-    lines.push(`      </bpmndi:BPMNEdge>`);
+    lines.push('      </bpmndi:BPMNEdge>');
   });
 
   lines.push('    </bpmndi:BPMNPlane>');
@@ -133,15 +147,6 @@ function generateBPMN(flow: IRFlow): string {
   lines.push('</bpmn:definitions>');
 
   return lines.join('\n');
-}
-
-function escapeXml(text: string): string {
-  return text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&apos;');
 }
 
 // ─── Main ───
