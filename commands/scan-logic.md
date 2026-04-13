@@ -8,21 +8,18 @@ Scan the specified directory and present a categorized list of functions that co
 
 1. Check if target path has a `tsconfig.json` (TypeScript project).
    - If YES: run `npx tsx scripts/scan-logic.ts <target-path> --json` and parse the JSON output.
-   - If NO: read source files in the target path yourself. Identify functions, decision points, and API calls conversationally. Categorize them using the rules below.
+   - If NO: read source files in the target path yourself. Identify functions, decision points, and API calls. Categorize them using the rules below.
 
-2. Present results as a categorized table with these columns: #, Function, File:Line, Type, Branches, Extract?
+2. Present results as a compact categorized table: #, Function, File:Line, Type, Branches, Extract?
 
-3. Group into categories:
-   - ENTRY POINTS — handlers, controllers, webhook receivers, cron jobs → default: Include
-   - DECISION TREES — functions with 3+ branches → default: Include
-   - AI CALLS — functions calling LLM APIs (Anthropic, OpenAI, etc.) → default: Include
-   - EXTERNAL CALLS — functions calling third-party APIs → default: Include
-   - DATA MUTATIONS — functions with database writes → default: Include
-   - UTILITIES — simple helpers, formatters, validators → default: Skip
-   - ALREADY DOCUMENTED — functions with existing IR files → show status
+3. Show summary: "X found, Y recommended, Z skipped, W already documented"
 
-4. Show summary: "X found, Y recommended, Z skipped, W already documented"
+4. Ask: "Review the list. Tell me which to add/remove, then run /extract-logic."
 
-5. Ask the developer: "Review the list above. Tell me which items to remove or add, then run /extract-logic to generate IR for the approved items."
+5. Remember the approved list for /extract-logic.
 
-6. Remember the approved list for when /extract-logic is called.
+## Important: minimize token usage
+
+- For TypeScript projects, rely entirely on the script output — do NOT read source files yourself.
+- Show the table and summary only — no per-function analysis.
+- Do NOT explain what each function does unless asked.

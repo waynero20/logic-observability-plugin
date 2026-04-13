@@ -8,23 +8,18 @@ Extract business logic for the functions approved in the previous /scan-logic st
 
 1. For each approved function from the scan results:
 
-   a. If TypeScript project: run `npx tsx scripts/extract-logic.ts <function-file:line> --json` and parse the output.
-   b. If non-TypeScript: read the source file yourself, identify the control flow (sequential steps, decisions, API calls), and structure it as IR YAML.
+   a. If TypeScript project: run `npx tsx scripts/extract-logic.ts <function-file:line> --json` and capture the output. The script **automatically cleans labels** into business language — no manual rewriting needed.
+   b. If non-TypeScript: read the source file, identify control flow, and write IR YAML to `docs/flows/<flow-id>.yaml`.
 
-2. For each extracted flow, rewrite the technical labels in business language:
-   - Bad:  "call isVagueHeuristic() with params wordCount, fillerRatio"
-   - Good: "Check for vague language"
-   - Labels should be under 10 words and understandable by non-developers.
+2. Run validation: `npx tsx scripts/validate-ir.ts docs/flows/<flow-id>.yaml`
 
-3. Classify each node's logic_type:
-   - Calls an LLM/AI API → probabilistic
-   - Reads from config/settings/database config → configurable
-   - Pure code logic → deterministic
+3. Show a **one-line summary per flow** (title, node count, status). Do NOT show full IR YAML unless the developer asks.
 
-4. Show the developer each flow's IR and ask: "Does this look right? Any labels to adjust?"
+4. Report: "Extracted X flows to docs/flows/. Run /generate-all to produce diagrams, or /label-logic if you want to refine labels."
 
-5. After developer approval, write each IR file to `docs/flows/<flow-id>.yaml` with `status: draft`.
+## Important: minimize token usage
 
-6. Run validation: `npx tsx scripts/validate-ir.ts docs/flows/<flow-id>.yaml`
-
-7. Report: "Extracted X flows. Files written to docs/flows/. Run /generate-all to produce diagrams."
+- Do NOT rewrite labels yourself — the script handles this automatically.
+- Do NOT show full YAML output — just the summary.
+- Do NOT ask for per-flow approval — extract all at once, developer can review files directly.
+- Batch multiple files in a single script call where possible: `npx tsx scripts/extract-logic.ts file1.ts:10 file2.ts:20 --json`

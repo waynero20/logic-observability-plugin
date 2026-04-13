@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs';
+import { writeFileSync, mkdirSync } from 'fs';
 import { join, basename, dirname, relative } from 'path';
 import { Project, SyntaxKind, Node, SourceFile } from 'ts-morph';
 import yaml from 'js-yaml';
@@ -557,7 +557,7 @@ export function extractFunction(
 function cleanLabel(raw: string): string {
   let label = raw;
   // Remove common prefixes like this., await, etc.
-  label = label.replace(/^(this\.|await\s+)/, '');
+  label = label.replace(/^(this\.|await\s+|self\.)/, '');
   // tracer.span('name', ...) → use span name
   const spanMatch = label.match(/tracer\.\w+\(['"]([^'"]+)['"]/);
   if (spanMatch) {
@@ -568,17 +568,80 @@ function cleanLabel(raw: string): string {
   // Property access chains: use last meaningful part
   if (label.includes('.')) {
     const parts = label.split('.');
-    label = parts[parts.length - 1];
+    // Keep last 2 parts if second-to-last is meaningful (e.g. db.insert → "DB insert")
+    const meaningful = parts.filter(p => !['this', 'await', 'self', 'prototype'].includes(p));
+    label = meaningful.length >= 2 ? meaningful.slice(-2).join(' ') : meaningful[meaningful.length - 1];
   }
   // CamelCase → space separated
   label = label.replace(/([a-z])([A-Z])/g, '$1 $2');
   // snake_case → space separated
   label = label.replace(/_/g, ' ');
-  // Capitalize first letter
-  label = label.charAt(0).toUpperCase() + label.slice(1).toLowerCase();
+  // Common verb improvements for business readability
+  label = label
+    .replace(/^get /i, 'Fetch ')
+    .replace(/^set /i, 'Update ')
+    .replace(/^is /i, 'Check if ')
+    .replace(/^has /i, 'Check has ')
+    .replace(/^can /i, 'Check can ')
+    .replace(/^should /i, 'Check should ')
+    .replace(/^find /i, 'Look up ')
+    .replace(/^create /i, 'Create ')
+    .replace(/^delete /i, 'Remove ')
+    .replace(/^remove /i, 'Remove ')
+    .replace(/^update /i, 'Update ')
+    .replace(/^send /i, 'Send ')
+    .replace(/^fetch /i, 'Fetch ')
+    .replace(/^validate /i, 'Validate ')
+    .replace(/^check /i, 'Check ')
+    .replace(/^handle /i, 'Handle ')
+    .replace(/^process /i, 'Process ')
+    .replace(/^parse /i, 'Parse ')
+    .replace(/^build /i, 'Build ')
+    .replace(/^generate /i, 'Generate ')
+    .replace(/^compute /i, 'Compute ')
+    .replace(/^calculate /i, 'Calculate ')
+    .replace(/^transform /i, 'Transform ')
+    .replace(/^convert /i, 'Convert ')
+    .replace(/^load /i, 'Load ')
+    .replace(/^save /i, 'Save ')
+    .replace(/^init /i, 'Initialize ')
+    .replace(/^notify /i, 'Notify ')
+    .replace(/^emit /i, 'Emit ')
+    .replace(/^log /i, 'Log ')
+    .replace(/^aggregate /i, 'Aggregate ');
+  // Capitalize first letter of each word
+  label = label.replace(/\b\w/g, c => c.toUpperCase());
   // Trim and limit length
   label = label.trim();
-  if (label.length > 40) label = label.slice(0, 37) + '...';
+  if (label.length > 50) label = label.slice(0, 47) + '...';
+  return label || raw;
+}
+
+function cleanDecisionLabel(raw: string): string {
+  let label = raw;
+  // Strip code noise from conditions
+  label = label.replace(/^!/, 'Not ');
+  label = label.replace(/\s*===?\s*/g, ' equals ');
+  label = label.replace(/\s*!==?\s*/g, ' not equals ');
+  label = label.replace(/\s*&&\s*/g, ' and ');
+  label = label.replace(/\s*\|\|\s*/g, ' or ');
+  label = label.replace(/\.length\s*/g, ' count ');
+  label = label.replace(/\.includes\([^)]*\)/g, ' matches');
+  label = label.replace(/\.has\([^)]*\)/g, ' exists');
+  // Remove quotes
+  label = label.replace(/['"]/g, '');
+  // Property access → space
+  label = label.replace(/\./g, ' ');
+  // CamelCase → space
+  label = label.replace(/([a-z])([A-Z])/g, '$1 $2');
+  // snake_case → space
+  label = label.replace(/_/g, ' ');
+  // Add question mark if not present
+  label = label.trim();
+  if (!label.endsWith('?')) label += '?';
+  // Capitalize first letter
+  label = label.charAt(0).toUpperCase() + label.slice(1);
+  if (label.length > 50) label = label.slice(0, 47) + '...';
   return label || raw;
 }
 
@@ -586,14 +649,16 @@ function cleanLabels(flow: IRFlow): void {
   for (const node of flow.nodes) {
     if (node.type === 'start' || node.type === 'end') continue;
     if (node.label === '(merge)') continue;
-    node.label = cleanLabel(node.label);
+    node.label = node.type === 'decision' ? cleanDecisionLabel(node.label) : cleanLabel(node.label);
   }
-  // Re-write the YAML file
+  // Also clean the title and description
+  if (flow.title === deriveTitle(flow.flow)) {
+    flow.title = flow.title.replace(/\b\w/g, c => c.toUpperCase());
+  }
+  // Re-write the YAML file with cleaned labels
   const outputPath = join(process.cwd(), 'docs', 'flows', `${flow.flow}.yaml`);
-  if (existsSync(outputPath)) {
-    const yamlContent = yaml.dump(flow, { lineWidth: 120, noRefs: true });
-    writeFileSync(outputPath, yamlContent);
-  }
+  const yamlContent = yaml.dump(flow, { lineWidth: 120, noRefs: true });
+  writeFileSync(outputPath, yamlContent);
 }
 
 // ─── Extract all exported functions from a file ───
@@ -652,11 +717,12 @@ const args = process.argv.slice(2);
 const flags = args.filter((a: string) => a.startsWith('--'));
 const positional = args.filter((a: string) => !a.startsWith('--'));
 const jsonMode = flags.includes('--json');
-const labelMode = flags.includes('--label');
+const skipLabels = flags.includes('--raw');
 
 if (positional.length === 0) {
-  console.error('Usage: tsx scripts/extract-logic.ts <file[:line]> [<file[:line]>...] [--json] [--label]');
+  console.error('Usage: tsx scripts/extract-logic.ts <file[:line]> [<file[:line]>...] [--json] [--raw]');
   console.error('  If no :line is given, extracts all exported functions from the file.');
+  console.error('  Labels are auto-cleaned by default. Use --raw to keep technical labels.');
   process.exit(1);
 }
 
@@ -673,7 +739,7 @@ for (const ref of positional) {
     console.log(`Extracting: ${filePath}:${line}...`);
     const flow = extractFunction(filePath, line, outputDir);
     if (flow) {
-      if (labelMode) cleanLabels(flow);
+      if (!skipLabels) cleanLabels(flow);
       const outputPath = join(outputDir, `${flow.flow}.yaml`);
       const issues = validate(outputPath);
       const errors = issues.filter((i: string) => !i.startsWith('Warning:'));
@@ -690,7 +756,7 @@ for (const ref of positional) {
     console.log(`Extracting all exports from: ${ref}...`);
     const flows = extractAllExports(ref, outputDir);
     for (const flow of flows) {
-      if (labelMode) cleanLabels(flow);
+      if (!skipLabels) cleanLabels(flow);
       const outputPath = join(outputDir, `${flow.flow}.yaml`);
       const issues = validate(outputPath);
       const errors = issues.filter((i: string) => !i.startsWith('Warning:'));

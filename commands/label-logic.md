@@ -1,26 +1,24 @@
 ---
-description: Re-label existing IR files with business-friendly language
+description: Re-label existing IR files with business-friendly language (optional polish)
 ---
 
-Re-label nodes in existing IR YAML files, translating technical names into business language.
+Re-label nodes in existing IR YAML files. This is **optional** — the extractor already auto-cleans labels. Only use this if you want Claude to further polish labels into more natural business language.
 
 ## What to do
 
-1. Find all IR files in `docs/flows/` (YAML files with a `flow` field).
+1. Find all IR files in `docs/flows/` that have `status: draft`.
 
-2. For each flow, review every node label:
-   - Bad:  "call isVagueHeuristic() with params wordCount, fillerRatio"
-   - Good: "Check for vague language"
-   - Labels should be under 10 words and understandable by non-developers.
+2. For each draft flow, read the YAML and list ONLY the labels that still look technical (contain code patterns like dots, parens, camelCase fragments). Skip labels that already read well.
 
-3. Also review the flow-level `title` and `description`:
-   - Title should be in Title Case, under 40 characters.
-   - Description should be plain English, 1-3 sentences, written for non-developers.
+3. Show a compact table: `| # | Current Label | Suggested Label |` — only for labels that need improvement.
 
-4. Show the developer a before/after comparison for each flow and ask: "Does this look right? Any labels to adjust?"
+4. After developer approval, update the IR YAML files in place.
 
-5. After approval, update the IR YAML files in place.
+5. Report: "Re-labelled X labels across Y flows."
 
-6. Run validation on each updated file: `npx tsx scripts/validate-ir.ts docs/flows/<flow-id>.yaml`
+## Important: minimize token usage
 
-7. Report: "Re-labelled X flows. Run /generate-all to regenerate diagrams."
+- Do NOT re-read source code files — work only from the IR YAML.
+- Do NOT show full YAML — just the label diff table.
+- Skip labels that already look like business language.
+- Batch all changes, don't ask per-flow.
