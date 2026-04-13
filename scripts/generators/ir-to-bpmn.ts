@@ -1,8 +1,7 @@
 import { writeFileSync } from 'fs';
 import { join } from 'path';
-import { BpmnModdle } from 'bpmn-moddle';
-import { layoutProcess } from 'bpmn-auto-layout';
-import { loadFlows, ensureOutputDir, type IRFlow, type IRNode } from './shared.js';
+import { loadFlows, ensureOutputDir, type IRFlow } from './shared.js';
+import dagre from '@dagrejs/dagre';
 
 function irTypeToBpmn(type: string): string {
   switch (type) {
@@ -16,74 +15,133 @@ function irTypeToBpmn(type: string): string {
   }
 }
 
-async function generateBPMN(flow: IRFlow): Promise<string> {
-  const moddle = new BpmnModdle();
+function sanitizeId(id: string): string {
+  // BPMN IDs must start with a letter or underscore
+  return id.replace(/[^a-zA-Z0-9_]/g, '_').replace(/^(\d)/, '_$1');
+}
 
-  const process = moddle.create('bpmn:Process', {
-    id: `Process_${flow.flow.replace(/-/g, '_')}`,
-    isExecutable: true,
+function generateBPMN(flow: IRFlow): string {
+  // ─── Layout with dagre (LR) ───
+  const g = new dagre.graphlib.Graph();
+  g.setDefaultEdgeLabel(() => ({}));
+  g.setGraph({ rankdir: 'LR', ranksep: 200, nodesep: 100 });
+
+  for (const node of flow.nodes) {
+    const dims = node.type === 'task'
+      ? { width: 200, height: 80 }
+      : ['decision', 'parallel_split', 'parallel_join'].includes(node.type)
+        ? { width: 50, height: 50 }
+        : { width: 36, height: 36 };
+    g.setNode(node.id, dims);
+  }
+  for (const edge of flow.edges) {
+    g.setEdge(edge.from, edge.to);
+  }
+  dagre.layout(g);
+
+  const processId = `Process_${sanitizeId(flow.flow)}`;
+  const collaborationId = `Collaboration_${sanitizeId(flow.flow)}`;
+  const participantId = `Participant_${sanitizeId(flow.flow)}`;
+
+  // Build incoming/outgoing maps
+  const incoming = new Map<string, string[]>();
+  const outgoing = new Map<string, string[]>();
+  flow.edges.forEach((edge, i) => {
+    const flowId = `Flow_${i}`;
+    if (!outgoing.has(edge.from)) outgoing.set(edge.from, []);
+    outgoing.get(edge.from)!.push(flowId);
+    if (!incoming.has(edge.to)) incoming.set(edge.to, []);
+    incoming.get(edge.to)!.push(flowId);
   });
 
-  // Create BPMN elements for each node
-  const elementMap = new Map<string, any>();
+  // ─── Build XML manually for full control ───
+  const lines: string[] = [];
+  lines.push('<?xml version="1.0" encoding="UTF-8"?>');
+  lines.push('<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"');
+  lines.push('  xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"');
+  lines.push('  xmlns:dc="http://www.omg.org/spec/DD/20100524/DC"');
+  lines.push('  xmlns:di="http://www.omg.org/spec/DD/20100524/DI"');
+  lines.push(`  id="Definitions_1" targetNamespace="http://geidi.com/logic-observability">`);
+
+  // Process
+  lines.push(`  <bpmn:process id="${processId}" name="${escapeXml(flow.title)}" isExecutable="true">`);
 
   for (const node of flow.nodes) {
     const bpmnType = irTypeToBpmn(node.type);
-    const element = moddle.create(bpmnType, {
-      id: node.id,
-      name: node.label,
-    });
-    elementMap.set(node.id, element);
-    process.get('flowElements').push(element);
+    const tag = bpmnType.replace('bpmn:', '');
+    const nodeId = sanitizeId(node.id);
+    const inRefs = incoming.get(node.id) || [];
+    const outRefs = outgoing.get(node.id) || [];
+
+    lines.push(`    <bpmn:${tag} id="${nodeId}" name="${escapeXml(node.label)}">`);
+    for (const ref of inRefs) lines.push(`      <bpmn:incoming>${ref}</bpmn:incoming>`);
+    for (const ref of outRefs) lines.push(`      <bpmn:outgoing>${ref}</bpmn:outgoing>`);
+    lines.push(`    </bpmn:${tag}>`);
   }
 
-  // Create sequence flows
-  for (let i = 0; i < flow.edges.length; i++) {
-    const edge = flow.edges[i];
-    const sourceRef = elementMap.get(edge.from);
-    const targetRef = elementMap.get(edge.to);
-
-    if (!sourceRef || !targetRef) continue;
-
-    const sequenceFlow = moddle.create('bpmn:SequenceFlow', {
-      id: `flow_${i}`,
-      name: edge.condition || undefined,
-      sourceRef,
-      targetRef,
-    });
-    process.get('flowElements').push(sequenceFlow);
-  }
-
-  const definitions = moddle.create('bpmn:Definitions', {
-    id: 'Definitions_1',
-    targetNamespace: 'http://geidi.com/logic-observability',
-    rootElements: [process],
+  // Sequence flows
+  flow.edges.forEach((edge, i) => {
+    const flowId = `Flow_${i}`;
+    const nameAttr = edge.condition ? ` name="${escapeXml(edge.condition)}"` : '';
+    lines.push(`    <bpmn:sequenceFlow id="${flowId}" sourceRef="${sanitizeId(edge.from)}" targetRef="${sanitizeId(edge.to)}"${nameAttr}/>`);
   });
 
-  const { xml: xmlWithoutLayout } = await moddle.toXML(definitions, { format: true });
+  lines.push('  </bpmn:process>');
 
-  // Add DI layout (bpmn-auto-layout produces top-to-bottom)
-  const xmlWithLayout = await layoutProcess(xmlWithoutLayout);
+  // ─── Diagram Interchange (DI) — required by Camunda ───
+  lines.push(`  <bpmndi:BPMNDiagram id="BPMNDiagram_1">`);
+  lines.push(`    <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="${processId}">`);
 
-  // Post-process: rotate from top-to-bottom to left-to-right by swapping x/y coordinates
-  const xmlLR = rotateTBtoLR(xmlWithLayout);
-  return xmlLR;
+  // Node shapes
+  for (const node of flow.nodes) {
+    const pos = g.node(node.id);
+    const nodeId = sanitizeId(node.id);
+    const x = Math.round(pos.x - pos.width / 2);
+    const y = Math.round(pos.y - pos.height / 2);
+
+    lines.push(`      <bpmndi:BPMNShape id="${nodeId}_di" bpmnElement="${nodeId}">`);
+    lines.push(`        <dc:Bounds x="${x}" y="${y}" width="${pos.width}" height="${pos.height}"/>`);
+    lines.push(`      </bpmndi:BPMNShape>`);
+  }
+
+  // Edge shapes with waypoints
+  flow.edges.forEach((edge, i) => {
+    const flowId = `Flow_${i}`;
+    const fromPos = g.node(edge.from);
+    const toPos = g.node(edge.to);
+
+    // Source: right side of node, Target: left side of node
+    const fromX = Math.round(fromPos.x + fromPos.width / 2);
+    const fromY = Math.round(fromPos.y);
+    const toX = Math.round(toPos.x - toPos.width / 2);
+    const toY = Math.round(toPos.y);
+
+    lines.push(`      <bpmndi:BPMNEdge id="${flowId}_di" bpmnElement="${flowId}">`);
+    lines.push(`        <di:waypoint x="${fromX}" y="${fromY}"/>`);
+    // Add midpoint if not a straight line
+    if (fromY !== toY) {
+      const midX = Math.round((fromX + toX) / 2);
+      lines.push(`        <di:waypoint x="${midX}" y="${fromY}"/>`);
+      lines.push(`        <di:waypoint x="${midX}" y="${toY}"/>`);
+    }
+    lines.push(`        <di:waypoint x="${toX}" y="${toY}"/>`);
+    lines.push(`      </bpmndi:BPMNEdge>`);
+  });
+
+  lines.push('    </bpmndi:BPMNPlane>');
+  lines.push('  </bpmndi:BPMNDiagram>');
+  lines.push('</bpmn:definitions>');
+
+  return lines.join('\n');
 }
 
-function rotateTBtoLR(xml: string): string {
-  // Swap x and y in dc:Bounds elements
-  let result = xml.replace(
-    /<dc:Bounds\s+x="([^"]+)"\s+y="([^"]+)"\s+width="([^"]+)"\s+height="([^"]+)"/g,
-    (_match, x, y, w, h) => `<dc:Bounds x="${y}" y="${x}" width="${h}" height="${w}"`
-  );
-
-  // Swap x and y in di:waypoint elements
-  result = result.replace(
-    /<di:waypoint\s+x="([^"]+)"\s+y="([^"]+)"/g,
-    (_match, x, y) => `<di:waypoint x="${y}" y="${x}"`
-  );
-
-  return result;
+function escapeXml(text: string): string {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
 }
 
 // ─── Main ───
@@ -98,7 +156,7 @@ if (flows.length === 0) {
 
 for (const flow of flows) {
   try {
-    const bpmn = await generateBPMN(flow);
+    const bpmn = generateBPMN(flow);
     writeFileSync(join(outputDir, `${flow.flow}.bpmn`), bpmn);
     console.log(`  ✓ ${flow.flow}.bpmn`);
   } catch (e) {
