@@ -11,6 +11,7 @@ import { createServer } from 'node:http';
 import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import yaml from 'js-yaml';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const flowsDir = resolve(process.argv[2] || join(__dirname, '..', 'docs', 'flows'));
@@ -21,117 +22,152 @@ if (!existsSync(flowsDir)) {
   process.exit(1);
 }
 
-// ── YAML Parser ──────────────────────────────────────────────────────
+// ── Types ───────────────────────────────────────────────────────────
 
-interface IRStep {
+interface IRNode {
   id: string;
+  type: 'task' | 'decision' | 'start' | 'end' | 'parallel_split' | 'parallel_join';
   label: string;
   logic_type?: string;
-  calls?: string;
-  note?: string;
+  description?: string;
+  calls?: string[];
+  code_ref?: string;
   on_error?: string;
   outcome?: Record<string, string>;
-  substeps?: IRStep[];
+  substeps?: any[];
   config?: string;
+  note?: string;
 }
 
-interface IRFile {
+interface IREdge {
+  from: string;
+  to: string;
+  condition?: string;
+}
+
+interface IRFlow {
   id: string;
   name: string;
   description: string;
-  source: { file: string; function: string; line: number };
+  source?: { file?: string; function?: string; line?: number };
   status: string;
   tags: string[];
-  steps: IRStep[];
+  nodes: IRNode[];
+  edges: IREdge[];
 }
 
-function parseYaml(text: string): IRFile {
-  const lines = text.split('\n');
-  const result: any = { source: {}, tags: [], steps: [] };
-  let currentStep: any = null;
-  let currentSubstep: any = null;
-  let inSteps = false;
-  let inSubsteps = false;
-  let inOutcome = false;
-  let outcomeTarget: any = null;
+// ── Normalize any YAML format into a unified flow ────────────────────
 
-  for (const raw of lines) {
-    const line = raw.replace(/\r$/, '');
-    if (!inSteps) {
-      if (line.startsWith('id: ')) result.id = line.slice(4).trim();
-      else if (line.startsWith('name: ')) result.name = line.slice(6).trim();
-      else if (line.startsWith('description: ')) result.description = line.slice(13).trim();
-      else if (line.startsWith('status: ')) result.status = line.slice(8).trim();
-      else if (line.startsWith('tags: ')) {
-        result.tags = line.slice(6).replace(/[\[\]]/g, '').split(',').map((s: string) => s.trim());
-      }
-      else if (line.startsWith('  file: ')) result.source.file = line.slice(8).trim();
-      else if (line.startsWith('  function: ')) result.source.function = line.slice(12).trim();
-      else if (line.startsWith('  line: ')) result.source.line = parseInt(line.slice(8).trim(), 10);
-      else if (line.startsWith('steps:')) inSteps = true;
-    } else {
-      const trimmed = line.trimStart();
-      const indent = line.length - trimmed.length;
-      if (trimmed.startsWith('- id: ')) {
-        if (indent <= 4) {
-          inSubsteps = false; inOutcome = false; currentSubstep = null;
-          currentStep = { id: trimmed.slice(6).trim(), label: '', logic_type: 'deterministic', outcome: {} };
-          result.steps.push(currentStep);
-          outcomeTarget = currentStep;
-        } else if (inSubsteps) {
-          currentSubstep = { id: trimmed.slice(6).trim(), label: '', logic_type: 'deterministic', outcome: {} };
-          if (!currentStep.substeps) currentStep.substeps = [];
-          currentStep.substeps.push(currentSubstep);
-          outcomeTarget = currentSubstep;
-          inOutcome = false;
-        }
-      } else if (trimmed.startsWith('label: ')) {
-        const val = trimmed.slice(7).trim().replace(/^["']|["']$/g, '');
-        if (currentSubstep && inSubsteps) currentSubstep.label = val;
-        else if (currentStep) currentStep.label = val;
-      } else if (trimmed.startsWith('logic_type: ')) {
-        const val = trimmed.slice(12).trim();
-        if (currentSubstep && inSubsteps) currentSubstep.logic_type = val;
-        else if (currentStep) currentStep.logic_type = val;
-      } else if (trimmed.startsWith('calls: ')) {
-        const val = trimmed.slice(7).trim();
-        if (currentSubstep && inSubsteps) currentSubstep.calls = val;
-        else if (currentStep) currentStep.calls = val;
-      } else if (trimmed.startsWith('note: ')) {
-        const val = trimmed.slice(6).trim();
-        if (currentSubstep && inSubsteps) currentSubstep.note = val;
-        else if (currentStep) currentStep.note = val;
-      } else if (trimmed.startsWith('on_error: ')) {
-        const val = trimmed.slice(10).trim();
-        if (currentSubstep && inSubsteps) currentSubstep.on_error = val;
-        else if (currentStep) currentStep.on_error = val;
-      } else if (trimmed.startsWith('config: ')) {
-        const val = trimmed.slice(8).trim();
-        if (currentStep) currentStep.config = val;
-      } else if (trimmed === 'substeps:') {
-        inSubsteps = true; inOutcome = false;
-      } else if (trimmed === 'outcome:' || trimmed.startsWith('outcome:')) {
-        inOutcome = true;
-      } else if (inOutcome && trimmed.includes(':') && !trimmed.startsWith('- ')) {
-        const ci = trimmed.indexOf(':');
-        if (outcomeTarget) outcomeTarget.outcome[ci > 0 ? trimmed.slice(0, ci).trim() : ''] = trimmed.slice(ci + 1).trim();
+function normalizeFlow(raw: any): IRFlow | null {
+  if (!raw || typeof raw !== 'object') return null;
+
+  const id = raw.id || raw.flow || null;
+  const name = raw.name || raw.title || id || null;
+  if (!id) return null;
+
+  const description = typeof raw.description === 'string' ? raw.description.trim() : '';
+  const status = raw.status || 'draft';
+  const tags = Array.isArray(raw.tags) ? raw.tags : [];
+  const source = raw.source || {};
+
+  // Already in nodes/edges IR format
+  if (Array.isArray(raw.nodes) && Array.isArray(raw.edges)) {
+    const nodes: IRNode[] = raw.nodes.map((n: any) => ({
+      id: n.id,
+      type: n.type || 'task',
+      label: n.label || n.id,
+      logic_type: n.logic_type,
+      description: n.description,
+      calls: Array.isArray(n.calls) ? n.calls : undefined,
+      code_ref: n.code_ref,
+    }));
+    const edges: IREdge[] = raw.edges.map((e: any) => ({
+      from: e.from,
+      to: e.to,
+      condition: e.condition,
+    }));
+    return { id, name, description, source, status, tags, nodes, edges };
+  }
+
+  // Steps format: convert to nodes/edges
+  if (Array.isArray(raw.steps) && raw.steps.length > 0) {
+    const nodes: IRNode[] = [];
+    const edges: IREdge[] = [];
+
+    // Flatten steps + substeps
+    const allSteps: any[] = [];
+    for (const step of raw.steps) {
+      allSteps.push(step);
+      if (Array.isArray(step.substeps)) {
+        for (const sub of step.substeps) allSteps.push(sub);
       }
     }
+
+    nodes.push({ id: '__start', type: 'start', label: 'Start' });
+
+    for (const step of allSteps) {
+      const hasOutcome = step.outcome && typeof step.outcome === 'object' && Object.keys(step.outcome).length > 0;
+      const callsList = step.calls
+        ? (typeof step.calls === 'string' ? step.calls.split(',').map((s: string) => s.trim()) : step.calls)
+        : undefined;
+
+      nodes.push({
+        id: step.id,
+        type: hasOutcome ? 'decision' : 'task',
+        label: step.label || step.id,
+        logic_type: step.logic_type || 'deterministic',
+        calls: callsList,
+        description: step.description,
+        code_ref: step.code_ref,
+        on_error: step.on_error,
+        outcome: step.outcome,
+        config: step.config,
+        note: step.note,
+      });
+    }
+
+    nodes.push({ id: '__end', type: 'end', label: 'End' });
+
+    // Build edges: sequential chain with branch exits for outcomes
+    edges.push({ from: '__start', to: allSteps[0].id });
+    for (let i = 0; i < allSteps.length - 1; i++) {
+      edges.push({ from: allSteps[i].id, to: allSteps[i + 1].id });
+    }
+    edges.push({ from: allSteps[allSteps.length - 1].id, to: '__end' });
+
+    // Add outcome branch edges
+    for (const step of allSteps) {
+      if (step.outcome && typeof step.outcome === 'object') {
+        for (const [key, val] of Object.entries(step.outcome)) {
+          const isExit = /stop|return|throw|skip|deny|reject|done$|silently/i.test(val as string);
+          if (isExit) {
+            const exitId = `${step.id}__exit_${key}`;
+            nodes.push({ id: exitId, type: 'end', label: val as string });
+            edges.push({ from: step.id, to: exitId, condition: key.replace(/_/g, ' ') });
+          }
+        }
+      }
+    }
+
+    return { id, name, description, source, status, tags, nodes, edges };
   }
-  return result as IRFile;
+
+  return null;
 }
 
 // ── Load all flows ──────────────────────────────────────────────────
 
-function loadFlows(): IRFile[] {
+function loadFlows(): IRFlow[] {
   return readdirSync(flowsDir)
-    .filter((f: string) => f.endsWith('.yaml'))
+    .filter((f: string) => (f.endsWith('.yaml') || f.endsWith('.yml')) && !f.startsWith('.'))
     .sort()
     .map((f: string) => {
-      try { return parseYaml(readFileSync(join(flowsDir, f), 'utf-8')); }
-      catch { return null; }
+      try {
+        const raw = yaml.load(readFileSync(join(flowsDir, f), 'utf-8'));
+        return normalizeFlow(raw);
+      } catch { return null; }
     })
-    .filter(Boolean) as IRFile[];
+    .filter(Boolean) as IRFlow[];
 }
 
 // ── HTML Template ───────────────────────────────────────────────────
@@ -140,9 +176,9 @@ function esc(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
-function renderIndex(flows: IRFile[]): string {
+function renderIndex(flows: IRFlow[]): string {
   // Group flows by ID prefix
-  const groups: Record<string, IRFile[]> = {};
+  const groups: Record<string, IRFlow[]> = {};
   for (const f of flows) {
     const prefix = f.id.split('-')[0];
     (groups[prefix] ??= []).push(f);
@@ -167,11 +203,7 @@ function renderIndex(flows: IRFile[]): string {
     }
   }
 
-  const flowsJson = JSON.stringify(flows.map(f => ({
-    id: f.id, name: f.name, description: f.description,
-    source: f.source, status: f.status, tags: f.tags,
-    steps: f.steps,
-  })));
+  const flowsJson = JSON.stringify(flows);
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -220,20 +252,8 @@ function renderIndex(flows: IRFile[]): string {
   .legend-dot { width: 10px; height: 10px; border-radius: 3px; }
 
   /* SVG Flow diagram */
-  .flow-canvas { overflow-x: auto; }
-  .flow-canvas svg { max-width: 100%; height: auto; }
-  .flow-canvas .node rect { rx: 6; ry: 6; stroke-width: 1.5; }
-  .flow-canvas .node text { font-size: 11px; fill: #c9d1d9; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
-  .flow-canvas .edge line, .flow-canvas .edge polyline { stroke: #30363d; stroke-width: 1.5; fill: none; }
-  .flow-canvas .edge-label { font-size: 9px; fill: #8b949e; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
-  .flow-canvas .det rect { fill: #0d2818; stroke: #3fb950; }
-  .flow-canvas .cfg rect { fill: #2d1b00; stroke: #d29922; }
-  .flow-canvas .prob rect { fill: #2d0a0a; stroke: #f85149; }
-  .flow-canvas .mut rect { fill: #1b0d30; stroke: #bc8cff; }
-  .flow-canvas .end rect { fill: #161b22; stroke: #484f58; }
-  .flow-canvas .badge { font-size: 9px; fill: #8b949e; }
-  .flow-canvas .node:hover rect { stroke-width: 2.5; filter: brightness(1.2); cursor: pointer; }
-  .flow-canvas .node .on-error-text { font-size: 8px; fill: #f85149; }
+  .flow-canvas { overflow: auto; }
+  .flow-canvas svg { display: block; }
 
   /* Empty state */
   .empty { display: flex; align-items: center; justify-content: center; height: 100%; color: var(--text2); font-size: 15px; }
@@ -267,8 +287,7 @@ function renderIndex(flows: IRFile[]): string {
       <div class="legend">
         <div class="legend-item"><div class="legend-dot" style="background:#3fb950"></div> Deterministic</div>
         <div class="legend-item"><div class="legend-dot" style="background:#d29922"></div> Configurable</div>
-        <div class="legend-item"><div class="legend-dot" style="background:#f85149"></div> Probabilistic (AI)</div>
-        <div class="legend-item"><div class="legend-dot" style="background:#bc8cff"></div> Data Mutation</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#bc8cff"></div> Probabilistic (AI)</div>
         <div class="legend-item"><div class="legend-dot" style="background:#484f58"></div> Exit / End</div>
       </div>
       <div class="flow-canvas" id="flow-canvas"></div>
@@ -300,167 +319,220 @@ document.getElementById('sidebar-body').addEventListener('click', e => {
   renderFlow(flowMap[link.dataset.id]);
 });
 
-function esc(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
-
-// ── SVG diagram renderer ────────────────────────────────────────────
-
-function logicCls(type) {
-  if (type === 'configurable') return 'cfg';
-  if (type === 'probabilistic') return 'prob';
-  return 'det';
+function esc(s) {
+  if (!s) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 
-function wrapText(text, maxChars) {
-  if (!text) return [''];
-  const words = text.split(' ');
-  const lines = [];
-  let cur = '';
-  for (const w of words) {
-    if (cur && (cur.length + 1 + w.length) > maxChars) {
-      lines.push(cur);
-      cur = w;
-    } else {
-      cur = cur ? cur + ' ' + w : w;
+// ── Graph layout (simple layered/Sugiyama-lite for LR flow) ──────
+
+function layoutGraph(nodes, edges) {
+  const nodeMap = new Map(nodes.map(n => [n.id, n]));
+  const inDeg = new Map(nodes.map(n => [n.id, 0]));
+  const adj = new Map(nodes.map(n => [n.id, []]));
+
+  for (const e of edges) {
+    if (nodeMap.has(e.from) && nodeMap.has(e.to)) {
+      adj.get(e.from).push(e.to);
+      inDeg.set(e.to, (inDeg.get(e.to) || 0) + 1);
     }
   }
-  if (cur) lines.push(cur);
-  return lines;
+
+  // Topological sort to assign ranks (layers)
+  const rank = new Map();
+  const queue = [];
+  for (const [id, deg] of inDeg) {
+    if (deg === 0) { queue.push(id); rank.set(id, 0); }
+  }
+
+  while (queue.length > 0) {
+    const cur = queue.shift();
+    const curRank = rank.get(cur);
+    for (const next of (adj.get(cur) || [])) {
+      const newRank = curRank + 1;
+      if (!rank.has(next) || rank.get(next) < newRank) {
+        rank.set(next, newRank);
+      }
+      inDeg.set(next, inDeg.get(next) - 1);
+      if (inDeg.get(next) === 0) queue.push(next);
+    }
+  }
+
+  // Handle any unranked nodes (cycles or disconnected)
+  for (const n of nodes) {
+    if (!rank.has(n.id)) rank.set(n.id, 0);
+  }
+
+  // Group by rank
+  const layers = new Map();
+  for (const n of nodes) {
+    const r = rank.get(n.id);
+    if (!layers.has(r)) layers.set(r, []);
+    layers.get(r).push(n);
+  }
+
+  return { rank, layers };
 }
+
+// ── SVG diagram renderer (graph-based) ──────────────────────────────
 
 function renderSvgDiagram(flow) {
-  const NODE_W = 400;
-  const NODE_H = 48;
-  const V_GAP = 60;
-  const BRANCH_X_OFFSET = 440;
-  const CENTER_X = 40;
-  const END_W = 260;
-  const MAX_LABEL_CHARS = 48;
-  const MAX_BADGE_CHARS = 55;
+  const PAD = 40;
+  const H_GAP = 200;  // horizontal gap between layers
+  const V_GAP = 60;   // vertical gap between nodes in same layer
+  const MAX_LABEL = 28;
 
-  // Flatten steps (inline substeps)
-  const allSteps = [];
-  for (const step of flow.steps) {
-    allSteps.push(step);
-    if (step.substeps) {
-      for (const sub of step.substeps) allSteps.push(sub);
-    }
+  const nodes = flow.nodes;
+  const edges = flow.edges;
+
+  if (!nodes || nodes.length === 0) {
+    return '<svg viewBox="0 0 400 80" xmlns="http://www.w3.org/2000/svg"><text x="200" y="40" text-anchor="middle" fill="#8b949e" font-size="14" font-family="system-ui, sans-serif">No nodes to display</text></svg>';
   }
 
-  // Layout pass: compute positions
-  const nodes = [];
-  const edges = [];
-  const endNodes = [];
-  let y = 10;
+  const { rank, layers } = layoutGraph(nodes, edges);
 
-  for (let i = 0; i < allSteps.length; i++) {
-    const step = allSteps[i];
-    const cls = logicCls(step.logic_type);
-    const labelLines = wrapText(step.label || step.id, MAX_LABEL_CHARS);
-    let badgeText = '';
-    if (step.calls) badgeText = 'calls: ' + step.calls;
-    else if (step.config) badgeText = 'config: ' + step.config;
-    else if (step.note) badgeText = step.note.length > 60 ? step.note.slice(0, 57) + '...' : step.note;
-    const badgeLines = badgeText ? wrapText(badgeText, MAX_BADGE_CHARS) : [];
-
-    const totalTextLines = labelLines.length + badgeLines.length;
-    const nodeH = Math.max(NODE_H, 20 + totalTextLines * 16 + (badgeLines.length > 0 ? 8 : 0));
-
-    nodes.push({
-      x: CENTER_X, y, w: NODE_W, h: nodeH, cls, lines: labelLines,
-      badgeLines, id: step.id, onError: step.on_error || null
-    });
-
-    // Branch exits from outcomes
-    const outcomes = step.outcome ? Object.entries(step.outcome) : [];
-    let branchY = y;
-    for (const [key, val] of outcomes) {
-      const isExit = /stop|return|throw|skip|deny|reject|done$|silently/i.test(val);
-      if (isExit) {
-        const endValLines = wrapText(val, 30);
-        const endH = 36 + endValLines.length * 13;
-        endNodes.push({
-          x: CENTER_X + BRANCH_X_OFFSET, y: branchY, w: END_W, h: endH,
-          cls: 'end', lines: endValLines, id: step.id + '-' + key
-        });
-        edges.push({
-          x1: CENTER_X + NODE_W, y1: y + nodeH / 2,
-          x2: CENTER_X + BRANCH_X_OFFSET, y2: branchY + endH / 2,
-          label: key.replace(/_/g, ' '), isBranch: true
-        });
-        branchY += endH + 8;
-      }
+  // Compute node dimensions
+  function nodeDims(n) {
+    const label = n.label || n.id;
+    if (n.type === 'start' || n.type === 'end') return { w: 100, h: 50 };
+    if (n.type === 'decision' || n.type === 'parallel_split' || n.type === 'parallel_join') {
+      const w = Math.max(120, Math.min(200, label.length * 7 + 40));
+      return { w, h: 70 };
     }
-
-    // Vertical edge to next step
-    if (i < allSteps.length - 1) {
-      edges.push({
-        x1: CENTER_X + NODE_W / 2, y1: y + nodeH,
-        x2: CENTER_X + NODE_W / 2, y2: y + nodeH + V_GAP,
-        isBranch: false
-      });
-    }
-
-    y += nodeH + V_GAP;
+    // task
+    const callsText = Array.isArray(n.calls) && n.calls.length > 0 ? n.calls.join(', ') : '';
+    const textLen = Math.max(label.length, callsText.length);
+    const w = Math.max(180, Math.min(320, textLen * 7.5 + 40));
+    const charsPerLine = Math.floor((w - 30) / 7);
+    const labelLines = Math.max(1, Math.ceil(label.length / charsPerLine));
+    const callsLines = callsText ? Math.max(1, Math.ceil(callsText.length / charsPerLine)) : 0;
+    const h = Math.max(50, 30 + (labelLines + callsLines) * 16);
+    return { w, h };
   }
 
-  // Determine SVG dimensions
-  const maxEndX = endNodes.length > 0
-    ? Math.max(...endNodes.map(n => n.x + n.w)) + 40
-    : CENTER_X + NODE_W + 60;
-  const svgW = Math.max(maxEndX, CENTER_X + NODE_W + BRANCH_X_OFFSET + END_W + 40);
-  const maxEndY = endNodes.length > 0 ? Math.max(...endNodes.map(n => n.y + n.h)) : 0;
-  const svgH = Math.max(y + 10, maxEndY + 20);
+  const dims = new Map();
+  for (const n of nodes) dims.set(n.id, nodeDims(n));
 
-  // Render SVG
-  let svg = '<svg viewBox="0 0 ' + svgW + ' ' + svgH + '" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto">';
-  svg += '<defs><marker id="arrow" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" fill="#30363d"/></marker>';
-  svg += '<marker id="arrow-branch" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" fill="#484f58"/></marker></defs>';
+  // Position nodes: x by rank, y by order in layer
+  const pos = new Map();
+  const sortedRanks = [...layers.keys()].sort((a, b) => a - b);
 
-  // Draw edges
-  svg += '<g class="edge">';
+  let x = PAD;
+  for (const r of sortedRanks) {
+    const layerNodes = layers.get(r);
+    let maxW = 0;
+    for (const n of layerNodes) maxW = Math.max(maxW, dims.get(n.id).w);
+
+    let y = PAD;
+    for (const n of layerNodes) {
+      const d = dims.get(n.id);
+      pos.set(n.id, { x: x + (maxW - d.w) / 2, y, w: d.w, h: d.h });
+      y += d.h + V_GAP;
+    }
+    x += maxW + H_GAP;
+  }
+
+  // Compute SVG dimensions
+  let svgW = 0, svgH = 0;
+  for (const [, p] of pos) {
+    svgW = Math.max(svgW, p.x + p.w + PAD);
+    svgH = Math.max(svgH, p.y + p.h + PAD);
+  }
+
+  // Color by logic type
+  function nodeColors(logicType) {
+    if (logicType === 'configurable') return { fill: '#2d1b00', stroke: '#d29922' };
+    if (logicType === 'probabilistic') return { fill: '#1b0d30', stroke: '#bc8cff' };
+    return { fill: '#0d2818', stroke: '#3fb950' };
+  }
+
+  function wrapText(text, maxChars) {
+    if (!text) return [''];
+    const words = text.split(' ');
+    const lines = [];
+    let cur = '';
+    for (const w of words) {
+      if (cur && (cur.length + 1 + w.length) > maxChars) { lines.push(cur); cur = w; }
+      else { cur = cur ? cur + ' ' + w : w; }
+    }
+    if (cur) lines.push(cur);
+    return lines;
+  }
+
+  let svg = '<svg viewBox="0 0 ' + svgW + ' ' + svgH + '" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto;max-width:' + svgW + 'px">';
+  svg += '<defs><marker id="arrow" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#484f58"/></marker></defs>';
+
+  // Draw edges first (behind nodes)
   for (const e of edges) {
-    if (e.isBranch) {
-      svg += '<polyline points="' + e.x1 + ',' + e.y1 + ' ' + (e.x1 + 20) + ',' + e.y1 + ' ' + (e.x2 - 10) + ',' + e.y2 + ' ' + e.x2 + ',' + e.y2 + '" marker-end="url(#arrow-branch)" />';
-      if (e.label) {
-        const mx = (e.x1 + e.x2) / 2;
-        const my = Math.min(e.y1, e.y2) - 4;
-        svg += '<text class="edge-label" x="' + mx + '" y="' + my + '" text-anchor="middle">' + esc(e.label) + '</text>';
+    const from = pos.get(e.from);
+    const to = pos.get(e.to);
+    if (!from || !to) continue;
+
+    const x1 = from.x + from.w;
+    const y1 = from.y + from.h / 2;
+    const x2 = to.x;
+    const y2 = to.y + to.h / 2;
+    const midX = (x1 + x2) / 2;
+
+    svg += '<path d="M' + x1 + ',' + y1 + ' C' + midX + ',' + y1 + ' ' + midX + ',' + y2 + ' ' + x2 + ',' + y2 + '" fill="none" stroke="#30363d" stroke-width="1.5" marker-end="url(#arrow)"/>';
+
+    if (e.condition) {
+      const lx = midX;
+      const ly = (y1 + y2) / 2;
+      const labelText = esc(e.condition);
+      const labelW = Math.min(labelText.length * 6.5 + 16, 150);
+      svg += '<rect x="' + (lx - labelW/2) + '" y="' + (ly - 10) + '" width="' + labelW + '" height="18" rx="4" fill="#161b22" stroke="#30363d" stroke-width="0.5"/>';
+      svg += '<text x="' + lx + '" y="' + (ly + 3) + '" text-anchor="middle" fill="#8b949e" font-size="10" font-family="system-ui, sans-serif">' + labelText + '</text>';
+    }
+  }
+
+  // Draw nodes
+  for (const n of nodes) {
+    const p = pos.get(n.id);
+    if (!p) continue;
+    const { x, y, w, h } = p;
+    const colors = nodeColors(n.logic_type);
+
+    if (n.type === 'start') {
+      svg += '<circle cx="' + (x + w/2) + '" cy="' + (y + h/2) + '" r="22" fill="#0d2818" stroke="#3fb950" stroke-width="2"/>';
+      svg += '<text x="' + (x + w/2) + '" y="' + (y + h/2 + 4) + '" text-anchor="middle" fill="#c9d1d9" font-size="11" font-weight="600" font-family="system-ui, sans-serif">' + esc(n.label) + '</text>';
+    } else if (n.type === 'end') {
+      svg += '<circle cx="' + (x + w/2) + '" cy="' + (y + h/2) + '" r="22" fill="#161b22" stroke="#484f58" stroke-width="3"/>';
+      const endLines = wrapText(n.label, 14);
+      const endStartY = y + h/2 - (endLines.length - 1) * 6 + 4;
+      for (let i = 0; i < endLines.length; i++) {
+        svg += '<text x="' + (x + w/2) + '" y="' + (endStartY + i * 12) + '" text-anchor="middle" fill="#8b949e" font-size="10" font-family="system-ui, sans-serif">' + esc(endLines[i]) + '</text>';
+      }
+    } else if (n.type === 'decision' || n.type === 'parallel_split' || n.type === 'parallel_join') {
+      const cx = x + w/2, cy = y + h/2;
+      const rx = w/2 - 4, ry = h/2 - 4;
+      svg += '<polygon points="' + cx + ',' + (cy - ry) + ' ' + (cx + rx) + ',' + cy + ' ' + cx + ',' + (cy + ry) + ' ' + (cx - rx) + ',' + cy + '" fill="' + colors.fill + '" stroke="' + colors.stroke + '" stroke-width="1.5"/>';
+      const decLines = wrapText(n.label, Math.floor(w / 8));
+      const decStartY = cy - (decLines.length - 1) * 7 + 4;
+      for (let i = 0; i < decLines.length; i++) {
+        svg += '<text x="' + cx + '" y="' + (decStartY + i * 14) + '" text-anchor="middle" fill="#c9d1d9" font-size="11" font-weight="500" font-family="system-ui, sans-serif">' + esc(decLines[i]) + '</text>';
       }
     } else {
-      svg += '<line x1="' + e.x1 + '" y1="' + e.y1 + '" x2="' + e.x2 + '" y2="' + e.y2 + '" marker-end="url(#arrow)" />';
-    }
-  }
-  svg += '</g>';
+      // Task node
+      svg += '<rect x="' + x + '" y="' + y + '" width="' + w + '" height="' + h + '" rx="8" ry="8" fill="' + colors.fill + '" stroke="' + colors.stroke + '" stroke-width="1.5"/>';
+      const label = n.label || n.id;
+      const charsPerLine = Math.floor((w - 30) / 7);
+      const labelLines = wrapText(label, charsPerLine);
+      const callsText = Array.isArray(n.calls) && n.calls.length > 0 ? 'calls: ' + n.calls.join(', ') : '';
+      const callsLines = callsText ? wrapText(callsText, charsPerLine) : [];
+      const totalH = labelLines.length * 14 + callsLines.length * 12 + (callsLines.length > 0 ? 6 : 0);
+      const textY = y + (h - totalH) / 2 + 12;
 
-  // Draw main nodes
-  for (const n of nodes) {
-    svg += '<g class="node ' + n.cls + '" transform="translate(' + n.x + ',' + n.y + ')">';
-    svg += '<rect width="' + n.w + '" height="' + n.h + '"/>';
-    const totalTextH = n.lines.length * 14 + n.badgeLines.length * 12 + (n.badgeLines.length > 0 ? 6 : 0);
-    const textStartY = (n.h - totalTextH) / 2 + 12;
-    for (let li = 0; li < n.lines.length; li++) {
-      svg += '<text x="' + (n.w/2) + '" y="' + (textStartY + li * 14) + '" text-anchor="middle">' + esc(n.lines[li]) + '</text>';
-    }
-    if (n.badgeLines.length > 0) {
-      const badgeStartY = textStartY + n.lines.length * 14 + 6;
-      for (let bi = 0; bi < n.badgeLines.length; bi++) {
-        svg += '<text x="' + (n.w/2) + '" y="' + (badgeStartY + bi * 12) + '" text-anchor="middle" class="badge">' + esc(n.badgeLines[bi]) + '</text>';
+      for (let i = 0; i < labelLines.length; i++) {
+        svg += '<text x="' + (x + w/2) + '" y="' + (textY + i * 14) + '" text-anchor="middle" fill="#c9d1d9" font-size="11" font-weight="500" font-family="system-ui, sans-serif">' + esc(labelLines[i]) + '</text>';
+      }
+      if (callsLines.length > 0) {
+        const callsY = textY + labelLines.length * 14 + 6;
+        for (let i = 0; i < callsLines.length; i++) {
+          svg += '<text x="' + (x + w/2) + '" y="' + (callsY + i * 12) + '" text-anchor="middle" fill="#8b949e" font-size="9" font-family="system-ui, sans-serif">' + esc(callsLines[i]) + '</text>';
+        }
       }
     }
-    if (n.onError) {
-      svg += '<text x="' + n.w + '" y="' + (n.h + 12) + '" text-anchor="end" class="on-error-text">on error: ' + esc(n.onError) + '</text>';
-    }
-    svg += '</g>';
-  }
-
-  // Draw end/exit nodes
-  for (const n of endNodes) {
-    svg += '<g class="node end" transform="translate(' + n.x + ',' + n.y + ')">';
-    svg += '<rect width="' + n.w + '" height="' + n.h + '" rx="12" ry="12" stroke-dasharray="4,3" />';
-    for (let li = 0; li < n.lines.length; li++) {
-      svg += '<text x="' + (n.w/2) + '" y="' + (n.h/2 - ((n.lines.length-1)*6.5) + li*13 + 4) + '" text-anchor="middle" style="font-size:10px">' + esc(n.lines[li]) + '</text>';
-    }
-    svg += '</g>';
   }
 
   svg += '</svg>';
@@ -471,12 +543,12 @@ function renderFlow(flow) {
   if (!flow) return;
   document.getElementById('main-header').style.display = '';
   document.getElementById('flow-name').textContent = flow.name;
-  document.getElementById('flow-desc').textContent = flow.description;
+  document.getElementById('flow-desc').textContent = flow.description || '';
 
-  const src = flow.source;
+  const src = flow.source || {};
   document.getElementById('flow-meta').innerHTML =
-    (src.file ? esc(src.file) + ':' + src.line + ' &middot; ' + esc(src.function) : '') +
-    ' &middot; status: ' + flow.status +
+    (src.file ? esc(src.file) + (src.line ? ':' + src.line : '') + (src['function'] ? ' &middot; ' + esc(src['function']) : '') : '') +
+    ' &middot; status: ' + (flow.status || 'draft') +
     ' &middot; ' + (flow.tags || []).map(t => '<span class="tag tag-other">' + esc(t) + '</span>').join(' ');
 
   document.getElementById('empty-state').style.display = 'none';
@@ -504,6 +576,6 @@ const server = createServer((_req: any, res: any) => {
 
 server.listen(PORT, () => {
   console.log(`\n  Flow Viewer running at http://localhost:${PORT}`);
-  console.log(`  Serving ${readdirSync(flowsDir).filter((f: string) => f.endsWith('.yaml')).length} flows from ${flowsDir}`);
+  console.log(`  Serving ${readdirSync(flowsDir).filter((f: string) => f.endsWith('.yaml') || f.endsWith('.yml')).length} flows from ${flowsDir}`);
   console.log(`  Press Ctrl+C to stop\n`);
 });

@@ -207,8 +207,9 @@ export function getNodeColor(logicType?: string): string {
   return COLORS.deterministic;
 }
 
-export function escapeXml(text: string): string {
-  return text
+export function escapeXml(text: string | unknown): string {
+  const s = String(text ?? '');
+  return s
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
