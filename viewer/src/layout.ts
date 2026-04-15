@@ -1,17 +1,26 @@
 import dagre from '@dagrejs/dagre';
 import type { IRNode, IREdge } from './types';
 
-// Estimate node width based on label length to prevent text overlap
+// Estimate node dimensions, dynamically sizing height for long labels
 function estimateNodeDims(node: IRNode): { width: number; height: number } {
   const labelLen = node.label.length;
 
   if (node.type === 'task') {
-    // Scale width with label: min 220, ~8px per char, max 360
-    const w = Math.max(220, Math.min(360, labelLen * 8 + 40));
-    return { width: w, height: 70 };
+    // Account for calls text too when sizing
+    const callsLen = node.calls ? `calls: ${node.calls.join(', ')}`.length : 0;
+    const textLen = Math.max(labelLen, callsLen);
+    // Width: min 220, ~8px per char, max 400
+    const w = Math.max(220, Math.min(400, textLen * 8 + 40));
+    // Estimate wrapped lines
+    const charsPerLine = Math.floor((w - 40) / 7.5);
+    const labelLines = Math.max(1, Math.ceil(labelLen / charsPerLine));
+    const callsLines = callsLen > 0 ? Math.max(1, Math.ceil(callsLen / charsPerLine)) : 0;
+    const totalLines = labelLines + callsLines;
+    // Base height 50 + 20px per line, min 70
+    const h = Math.max(70, 50 + totalLines * 20);
+    return { width: w, height: h };
   }
   if (['decision', 'parallel_split', 'parallel_join'].includes(node.type)) {
-    // Gateway: label renders outside diamond, so reserve width for text
     const w = Math.max(180, Math.min(300, labelLen * 7 + 50));
     return { width: w, height: 100 };
   }
@@ -25,9 +34,9 @@ export function layoutFlow(nodes: IRNode[], edges: IREdge[]) {
   g.setDefaultEdgeLabel(() => ({}));
   g.setGraph({
     rankdir: 'LR',
-    ranksep: 250,
-    nodesep: 100,
-    edgesep: 40,
+    ranksep: 300,
+    nodesep: 120,
+    edgesep: 50,
     marginx: 60,
     marginy: 60,
   });

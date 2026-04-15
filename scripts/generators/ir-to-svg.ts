@@ -7,11 +7,52 @@ function nodeToSVG(node: PositionedNode): string {
   const fill = getNodeColor(node.logic_type);
 
   switch (node.type) {
-    case 'task':
+    case 'task': {
+      const w = node.width;
+      const h = node.height;
+      const cx = x + w / 2;
+      const maxChars = Math.floor((w - 40) / 7.5);
+
+      // Wrap label text
+      function wrapText(text: string): string[] {
+        const words = text.split(' ');
+        const result: string[] = [];
+        let line = '';
+        for (const word of words) {
+          if (line && (line + ' ' + word).length > maxChars) {
+            result.push(line);
+            line = word;
+          } else {
+            line = line ? line + ' ' + word : word;
+          }
+        }
+        if (line) result.push(line);
+        return result;
+      }
+
+      const labelLines = wrapText(node.label);
+      const callsText = node.calls && node.calls.length > 0 ? `calls: ${node.calls.join(', ')}` : '';
+      const callsLines = callsText ? wrapText(callsText) : [];
+      const allLines = [...labelLines, ...callsLines];
+      const lineHeight = 18;
+      const totalTextHeight = allLines.length * lineHeight;
+      const startY = y + (h - totalTextHeight) / 2 + 14; // 14 ≈ baseline offset
+
+      let textSvg = labelLines.map((line, i) =>
+        `    <text x="${cx}" y="${startY + i * lineHeight}" text-anchor="middle" fill="${COLORS.text}" font-size="13" font-weight="500" font-family="system-ui, sans-serif">${escapeXml(line)}</text>`
+      ).join('\n');
+      if (callsLines.length > 0) {
+        const callsStartY = startY + labelLines.length * lineHeight;
+        textSvg += '\n' + callsLines.map((line, i) =>
+          `    <text x="${cx}" y="${callsStartY + i * lineHeight}" text-anchor="middle" fill="#888" font-size="10" font-family="system-ui, sans-serif">${escapeXml(line)}</text>`
+        ).join('\n');
+      }
+
       return `  <g>
-    <rect x="${x}" y="${y}" width="260" height="64" rx="10" fill="${COLORS.nodeBg}" stroke="${fill}" stroke-width="2"/>
-    <text x="${x + 130}" y="${y + 36}" text-anchor="middle" fill="${COLORS.text}" font-size="13" font-weight="500" font-family="system-ui, sans-serif">${escapeXml(node.label)}</text>
+    <rect x="${x}" y="${y}" width="${w}" height="${h}" rx="10" fill="${COLORS.nodeBg}" stroke="${fill}" stroke-width="2"/>
+${textSvg}
   </g>`;
+    }
     case 'decision':
     case 'parallel_split':
     case 'parallel_join': {

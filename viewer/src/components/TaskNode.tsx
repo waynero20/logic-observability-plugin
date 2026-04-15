@@ -20,16 +20,23 @@ export function TaskNode({ data, selected }: { data: IRNode; selected?: boolean 
           borderRadius: 10,
           padding: '12px 20px',
           minWidth: 180,
+          maxWidth: 400,
           textAlign: 'center',
           cursor: 'pointer',
           boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
-          whiteSpace: 'nowrap',
-          overflow: 'visible',
+          whiteSpace: 'normal',
+          wordBreak: 'break-word',
+          overflow: 'hidden',
         }}
       >
         <div style={{ fontSize: 13, color: 'var(--text-primary)', lineHeight: 1.4, fontWeight: 500 }}>
           {data.label}
         </div>
+        {data.calls && data.calls.length > 0 && (
+          <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 4, lineHeight: 1.3, wordBreak: 'break-all' }}>
+            calls: {data.calls.join(', ')}
+          </div>
+        )}
         {data.logic_type && (
           <div style={{ fontSize: 10, color, marginTop: 5, textTransform: 'uppercase', letterSpacing: 0.5, fontWeight: 600 }}>
             {data.logic_type === 'probabilistic' ? 'AI-powered' : data.logic_type === 'configurable' ? 'Config-driven' : 'Rule-based'}

@@ -64,6 +64,59 @@ export interface PositionedNode extends IRNode {
 
 // ─── Load IR files ───
 
+// Normalize steps-format YAML into the nodes/edges IR format
+function normalizeFlow(raw: any): IRFlow | null {
+  // Already in IR format
+  if (raw.nodes && raw.edges) return raw as IRFlow;
+
+  // Steps-format: convert to IR
+  if (!raw.steps || !Array.isArray(raw.steps) || raw.steps.length === 0) return null;
+
+  const nodes: IRNode[] = [];
+  const edges: IREdge[] = [];
+
+  nodes.push({ id: '__start', type: 'start', label: 'Start' });
+
+  for (const step of raw.steps) {
+    const hasOutcome = step.outcome && typeof step.outcome === 'object';
+    const callsList = step.calls
+      ? (typeof step.calls === 'string' ? step.calls.split(',').map((s: string) => s.trim()) : step.calls)
+      : undefined;
+
+    nodes.push({
+      id: step.id,
+      type: hasOutcome ? 'decision' : 'task',
+      label: step.label || step.id,
+      logic_type: step.logic_type || 'deterministic',
+      calls: callsList,
+      description: step.description,
+      code_ref: step.code_ref,
+    });
+  }
+
+  nodes.push({ id: '__end', type: 'end', label: 'End' });
+
+  edges.push({ from: '__start', to: raw.steps[0].id });
+  for (let i = 0; i < raw.steps.length - 1; i++) {
+    edges.push({ from: raw.steps[i].id, to: raw.steps[i + 1].id });
+  }
+  edges.push({ from: raw.steps[raw.steps.length - 1].id, to: '__end' });
+
+  return {
+    flow: raw.id || raw.flow || 'unknown',
+    version: raw.version || 1,
+    title: raw.name || raw.title || raw.id || 'Untitled',
+    description: raw.description || '',
+    service: raw.service,
+    module: raw.module,
+    status: raw.status || 'draft',
+    nodes,
+    edges,
+    entry_point: '__start',
+    exit_points: ['__end'],
+  };
+}
+
 export function loadFlows(flowsDir?: string): IRFlow[] {
   const dir = flowsDir || join(process.cwd(), 'docs', 'flows');
   const files = readdirSync(dir).filter(f =>
@@ -74,8 +127,10 @@ export function loadFlows(flowsDir?: string): IRFlow[] {
   for (const file of files) {
     try {
       const content = readFileSync(join(dir, file), 'utf-8');
-      const flow = yaml.load(content) as IRFlow;
-      if (flow?.flow && flow?.nodes) flows.push(flow);
+      const raw = yaml.load(content) as any;
+      if (!raw) continue;
+      const flow = normalizeFlow(raw);
+      if (flow) flows.push(flow);
     } catch (e) {
       console.warn(`Skipping ${file}: ${(e as Error).message}`);
     }
@@ -94,14 +149,26 @@ export function ensureOutputDir(dir?: string): string {
 export function layoutNodes(nodes: IRNode[], edges: IREdge[]): PositionedNode[] {
   const g = new dagre.graphlib.Graph();
   g.setDefaultEdgeLabel(() => ({}));
-  g.setGraph({ rankdir: 'LR', ranksep: 200, nodesep: 80, marginx: 40, marginy: 40 });
+  g.setGraph({ rankdir: 'LR', ranksep: 250, nodesep: 100, marginx: 40, marginy: 40 });
 
   for (const node of nodes) {
-    const dims = node.type === 'task'
-      ? { width: 260, height: 64 }
-      : ['decision', 'parallel_split', 'parallel_join'].includes(node.type)
-        ? { width: 160, height: 80 }
-        : { width: 80, height: 80 };
+    let dims: { width: number; height: number };
+    if (node.type === 'task') {
+      const labelLen = node.label.length;
+      const callsLen = node.calls ? `calls: ${node.calls.join(', ')}`.length : 0;
+      const textLen = Math.max(labelLen, callsLen);
+      const w = Math.max(260, Math.min(400, textLen * 8 + 40));
+      const charsPerLine = Math.floor((w - 40) / 7.5);
+      const labelLines = Math.max(1, Math.ceil(labelLen / charsPerLine));
+      const callsLines = callsLen > 0 ? Math.max(1, Math.ceil(callsLen / charsPerLine)) : 0;
+      const totalLines = labelLines + callsLines;
+      const h = Math.max(64, 44 + totalLines * 20);
+      dims = { width: w, height: h };
+    } else if (['decision', 'parallel_split', 'parallel_join'].includes(node.type)) {
+      dims = { width: 160, height: 80 };
+    } else {
+      dims = { width: 80, height: 80 };
+    }
     g.setNode(node.id, dims);
   }
 

@@ -1,0 +1,5 @@
+{
+  "enabledPlugins": {
+    "logic-observability-plugin@logic-observability": true
+  }
+}
