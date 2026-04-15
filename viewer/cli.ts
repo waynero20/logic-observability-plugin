@@ -27,69 +27,119 @@ if (files.length === 0) {
   process.exit(1);
 }
 
-// Normalize steps-format YAML into the nodes/edges IR format the viewer expects
-function normalizeFlow(raw: any): any {
-  // Already in IR format (has nodes/edges)
-  if (raw.nodes && raw.edges) return raw;
+// Adapt various YAML formats into the nodes+edges IR format the viewer expects
+function adaptFlow(raw: any): any {
+  // Already in viewer IR format
+  if (raw.flow && raw.edges) return raw;
 
-  // Steps-format: convert to IR
-  if (!raw.steps) return raw;
+  // Steps-format (has raw.steps array)
+  if (raw.steps) {
+    const nodes: any[] = [];
+    const edges: any[] = [];
 
-  const nodes: any[] = [];
-  const edges: any[] = [];
+    nodes.push({ id: '__start', type: 'start', label: 'Start' });
 
-  // Add start node
-  nodes.push({ id: '__start', type: 'start', label: 'Start' });
+    for (const step of raw.steps) {
+      const hasOutcome = step.outcome && typeof step.outcome === 'object';
+      const callsList = step.calls
+        ? (typeof step.calls === 'string' ? step.calls.split(',').map((s: string) => s.trim()) : step.calls)
+        : [];
 
-  for (const step of raw.steps) {
-    const hasOutcome = step.outcome && typeof step.outcome === 'object';
-    const callsList = step.calls
-      ? (typeof step.calls === 'string' ? step.calls.split(',').map((s: string) => s.trim()) : step.calls)
-      : [];
+      nodes.push({
+        id: step.id,
+        type: hasOutcome ? 'decision' : 'task',
+        label: step.label || step.id,
+        logic_type: step.logic_type || 'deterministic',
+        calls: callsList.length > 0 ? callsList : undefined,
+        description: step.description,
+        code_ref: step.code_ref,
+      });
+    }
 
-    nodes.push({
-      id: step.id,
-      type: hasOutcome ? 'decision' : 'task',
-      label: step.label || step.id,
-      logic_type: step.logic_type || 'deterministic',
-      calls: callsList.length > 0 ? callsList : undefined,
-      description: step.description,
-      code_ref: step.code_ref,
-    });
+    nodes.push({ id: '__end', type: 'end', label: 'End' });
+
+    edges.push({ from: '__start', to: raw.steps[0].id });
+    for (let i = 0; i < raw.steps.length - 1; i++) {
+      edges.push({ from: raw.steps[i].id, to: raw.steps[i + 1].id });
+    }
+    edges.push({ from: raw.steps[raw.steps.length - 1].id, to: '__end' });
+
+    return {
+      flow: raw.id || raw.flow || 'unknown',
+      version: raw.version || 1,
+      title: raw.name || raw.title || raw.id || 'Untitled',
+      description: raw.description || '',
+      service: raw.service,
+      module: raw.module,
+      status: raw.status || 'active',
+      nodes,
+      edges,
+      entry_point: '__start',
+      exit_points: ['__end'],
+    };
   }
 
-  // Add end node
-  nodes.push({ id: '__end', type: 'end', label: 'End' });
+  // Nodes-with-next format (id, nodes[] with next/branches inline)
+  if (raw.id && raw.nodes && !raw.edges) {
+    const typeMap: Record<string, string> = {
+      action: 'task',
+      guard: 'decision',
+      decision: 'decision',
+      start: 'start',
+      end: 'end',
+    };
 
-  // Create sequential edges (start → first step → ... → last step → end)
-  edges.push({ from: '__start', to: raw.steps[0].id });
-  for (let i = 0; i < raw.steps.length - 1; i++) {
-    edges.push({ from: raw.steps[i].id, to: raw.steps[i + 1].id });
+    const nodes: any[] = [];
+    const edges: any[] = [];
+    const entryPoint = raw.nodes[0]?.id || '';
+    const exitPoints: string[] = [];
+
+    for (const node of raw.nodes) {
+      const viewerType = typeMap[node.type] || 'task';
+      nodes.push({
+        id: node.id,
+        type: viewerType,
+        label: node.label || node.id,
+        logic_type: 'deterministic',
+      });
+
+      if (node.terminal) {
+        exitPoints.push(node.id);
+      }
+
+      if (node.next) {
+        edges.push({ from: node.id, to: node.next });
+      }
+      if (node.branches) {
+        for (const branch of node.branches) {
+          if (branch.next) {
+            edges.push({ from: node.id, to: branch.next, condition: branch.condition });
+          }
+        }
+      }
+    }
+
+    return {
+      flow: raw.id,
+      version: 1,
+      title: raw.title || raw.id,
+      description: raw.description || '',
+      status: 'active',
+      nodes,
+      edges,
+      entry_point: entryPoint,
+      exit_points: exitPoints,
+    };
   }
-  edges.push({ from: raw.steps[raw.steps.length - 1].id, to: '__end' });
 
-  return {
-    flow: raw.id || raw.flow || 'unknown',
-    version: raw.version || 1,
-    title: raw.name || raw.title || raw.id || 'Untitled',
-    description: raw.description || '',
-    service: raw.service,
-    module: raw.module,
-    status: raw.status || 'draft',
-    tags: raw.tags,
-    source: raw.source,
-    nodes,
-    edges,
-    entry_point: '__start',
-    exit_points: ['__end'],
-  };
+  return raw;
 }
 
 const flows = files.map(f => {
   try {
     const content = readFileSync(join(resolvedDir, f), 'utf-8');
     const raw = yaml.load(content);
-    return raw ? normalizeFlow(raw) : null;
+    return raw ? adaptFlow(raw) : null;
   } catch (e) {
     console.warn(`Skipping ${f}: ${(e as Error).message}`);
     return null;
@@ -116,7 +166,6 @@ const server = await createServer({
 });
 
 await server.listen();
-const info = server.config.server;
 const port = server.httpServer?.address();
 const actualPort = typeof port === 'object' && port ? port.port : 3200;
 

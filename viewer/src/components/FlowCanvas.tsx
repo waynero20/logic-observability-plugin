@@ -47,7 +47,7 @@ export function FlowCanvas({ flow, filter, search }: { flow: IRFlow; filter: str
         const matchesSearch = !searchIds || searchIds.has(n.id);
         return {
           ...n,
-          style: matchesFilter && matchesSearch ? {} : { opacity: 0.15 },
+          style: matchesFilter && matchesSearch ? {} : { opacity: 0.12 },
         };
       }),
       edges: result.edges,
@@ -59,7 +59,7 @@ export function FlowCanvas({ flow, filter, search }: { flow: IRFlow; filter: str
   }, []);
 
   return (
-    <div style={{ flex: 1, position: 'relative', width: '100%', height: '100%' }}>
+    <div style={{ width: '100%', height: '100%', position: 'relative' }}>
       <ReactFlow
         nodes={nodes}
         edges={edges}
@@ -67,24 +67,40 @@ export function FlowCanvas({ flow, filter, search }: { flow: IRFlow; filter: str
         onNodeClick={onNodeClick}
         onPaneClick={() => setSelectedNode(null)}
         fitView
-        fitViewOptions={{ padding: 0.4, minZoom: 0.1, maxZoom: 1.2 }}
+        fitViewOptions={{ padding: 0.3, minZoom: 0.1, maxZoom: 1.2 }}
         minZoom={0.05}
         maxZoom={3}
-        defaultEdgeOptions={{
-          style: { strokeWidth: 2 },
-        }}
+        defaultEdgeOptions={{ style: { strokeWidth: 1.5 } }}
         nodesDraggable
         proOptions={{ hideAttribution: true }}
       >
-        <Background variant={BackgroundVariant.Dots} gap={24} size={1} color="#2a2a2a" />
+        <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="rgba(255,255,255,0.03)" />
         <Controls
           showInteractive={false}
-          style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 8 }}
+          position="bottom-left"
+          style={{
+            background: 'var(--bg-elevated)',
+            border: '1px solid var(--border)',
+            borderRadius: 'var(--radius)',
+          }}
         />
         <MiniMap
-          style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 8 }}
+          position="bottom-right"
+          style={{
+            background: 'var(--bg-elevated)',
+            border: '1px solid var(--border)',
+            borderRadius: 'var(--radius)',
+            width: 140,
+            height: 90,
+          }}
           maskColor="rgba(0,0,0,0.6)"
-          nodeColor="#555"
+          nodeColor={(node: any) => {
+            const type = node.data?.type;
+            if (type === 'decision') return '#fbbf24';
+            if (type === 'start') return '#34d399';
+            if (type === 'end') return '#f87171';
+            return '#52525b';
+          }}
           pannable
           zoomable
         />

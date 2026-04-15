@@ -1,44 +1,43 @@
 import dagre from '@dagrejs/dagre';
 import type { IRNode, IREdge } from './types';
 
-// Estimate node dimensions, dynamically sizing height for long labels
 function estimateNodeDims(node: IRNode): { width: number; height: number } {
   const labelLen = node.label.length;
 
   if (node.type === 'task') {
-    // Account for calls text too when sizing
-    const callsLen = node.calls ? `calls: ${node.calls.join(', ')}`.length : 0;
+    const callsLen = node.calls ? `${node.calls.join(', ')}`.length : 0;
     const textLen = Math.max(labelLen, callsLen);
-    // Width: min 220, ~8px per char, max 400
-    const w = Math.max(220, Math.min(400, textLen * 8 + 40));
-    // Estimate wrapped lines
-    const charsPerLine = Math.floor((w - 40) / 7.5);
+    const w = Math.max(200, Math.min(280, textLen * 7 + 40));
+    const charsPerLine = Math.floor((w - 32) / 7);
     const labelLines = Math.max(1, Math.ceil(labelLen / charsPerLine));
     const callsLines = callsLen > 0 ? Math.max(1, Math.ceil(callsLen / charsPerLine)) : 0;
     const totalLines = labelLines + callsLines;
-    // Base height 50 + 20px per line, min 70
-    const h = Math.max(70, 50 + totalLines * 20);
+    const h = Math.max(50, 30 + totalLines * 20);
     return { width: w, height: h };
   }
+
   if (['decision', 'parallel_split', 'parallel_join'].includes(node.type)) {
-    const w = Math.max(180, Math.min(300, labelLen * 7 + 50));
-    return { width: w, height: 100 };
+    const w = Math.max(160, Math.min(240, labelLen * 7 + 50));
+    const charsPerLine = Math.floor(w / 7);
+    const lines = Math.max(1, Math.ceil(labelLen / charsPerLine));
+    return { width: w, height: 50 + lines * 16 };
   }
-  // Event (start/end): circle + label below
-  const w = Math.max(100, Math.min(180, labelLen * 7 + 30));
-  return { width: w, height: 100 };
+
+  // Event (start/end)
+  const w = Math.max(80, Math.min(160, labelLen * 7 + 30));
+  return { width: w, height: 60 };
 }
 
 export function layoutFlow(nodes: IRNode[], edges: IREdge[]) {
   const g = new dagre.graphlib.Graph();
   g.setDefaultEdgeLabel(() => ({}));
   g.setGraph({
-    rankdir: 'LR',
-    ranksep: 300,
-    nodesep: 120,
-    edgesep: 50,
-    marginx: 60,
-    marginy: 60,
+    rankdir: 'TB',
+    ranksep: 80,
+    nodesep: 50,
+    edgesep: 30,
+    marginx: 40,
+    marginy: 40,
   });
 
   for (const node of nodes) {
@@ -53,9 +52,11 @@ export function layoutFlow(nodes: IRNode[], edges: IREdge[]) {
 
   const xyNodes = nodes.map(node => {
     const pos = g.node(node.id);
-    const nodeType = node.type === 'task' ? 'taskNode'
-      : ['decision', 'parallel_split', 'parallel_join'].includes(node.type) ? 'gatewayNode'
-      : 'eventNode';
+    const nodeType = node.type === 'task'
+      ? 'taskNode'
+      : ['decision', 'parallel_split', 'parallel_join'].includes(node.type)
+        ? 'gatewayNode'
+        : 'eventNode';
 
     return {
       id: node.id,
@@ -71,12 +72,12 @@ export function layoutFlow(nodes: IRNode[], edges: IREdge[]) {
     target: edge.to,
     type: 'smoothstep',
     label: edge.condition || undefined,
-    style: { stroke: '#555', strokeWidth: 2 },
-    labelStyle: { fill: '#ccc', fontSize: 12, fontWeight: 500 },
-    labelBgStyle: { fill: '#1a1a1a', fillOpacity: 0.95 },
+    style: { stroke: '#3f3f46', strokeWidth: 1.5 },
+    labelStyle: { fill: '#a1a1aa', fontSize: 11, fontWeight: 500 },
+    labelBgStyle: { fill: '#18181c', fillOpacity: 0.95 },
     labelBgPadding: [8, 5] as [number, number],
     labelBgBorderRadius: 4,
-    markerEnd: { type: 'arrowclosed' as const, color: '#555' },
+    markerEnd: { type: 'arrowclosed' as const, color: '#3f3f46', width: 16, height: 16 },
   }));
 
   return { nodes: xyNodes, edges: xyEdges };

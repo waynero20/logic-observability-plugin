@@ -1,55 +1,109 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
 :root {
-  --bg: #0f0f0f;
-  --bg-surface: #1a1a1a;
-  --bg-elevated: #252525;
-  --text-primary: #e0e0e0;
-  --text-secondary: #999;
-  --text-muted: #666;
-  --accent: #6366f1;
-  --deterministic: #22c55e;
-  --configurable: #f59e0b;
-  --probabilistic: #8b5cf6;
-  --border: #333;
+  --bg: #09090b;
+  --bg-surface: #111114;
+  --bg-elevated: #18181c;
+  --bg-hover: #1f1f24;
+  --bg-active: #27272e;
+  --text-primary: #fafafa;
+  --text-secondary: #a1a1aa;
+  --text-muted: #52525b;
+  --accent: #818cf8;
+  --accent-dim: rgba(129, 140, 248, 0.1);
+  --accent-glow: rgba(129, 140, 248, 0.2);
+  --green: #34d399;
+  --green-dim: rgba(52, 211, 153, 0.1);
+  --amber: #fbbf24;
+  --amber-dim: rgba(251, 191, 36, 0.1);
+  --purple: #a78bfa;
+  --purple-dim: rgba(167, 139, 250, 0.1);
+  --red: #f87171;
+  --red-dim: rgba(248, 113, 113, 0.1);
+  --blue: #60a5fa;
+  --blue-dim: rgba(96, 165, 250, 0.1);
+  --cyan: #22d3ee;
+  --cyan-dim: rgba(34, 211, 238, 0.1);
+  --border: rgba(255, 255, 255, 0.06);
+  --border-strong: rgba(255, 255, 255, 0.1);
+  --border-accent: rgba(129, 140, 248, 0.3);
+  --shadow-sm: 0 1px 2px rgba(0,0,0,0.3);
+  --shadow: 0 2px 8px rgba(0,0,0,0.4);
+  --shadow-lg: 0 8px 32px rgba(0,0,0,0.5);
+  --radius: 10px;
+  --radius-sm: 6px;
+  --radius-lg: 14px;
+  --sidebar-width: 280px;
+  --transition: 150ms cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* node type colors */
+  --deterministic: #34d399;
+  --configurable: #fbbf24;
+  --probabilistic: #a78bfa;
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
 html, body {
-  font-family: system-ui, -apple-system, sans-serif;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
   background: var(--bg);
   color: var(--text-primary);
   height: 100%;
   width: 100%;
   overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 #root {
   height: 100vh;
   width: 100vw;
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   overflow: hidden;
 }
 
-/* ReactFlow container must fill all available space */
-.react-flow {
-  width: 100% !important;
-  height: 100% !important;
-}
+/* Scrollbar */
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.15); }
 
-/* Responsive: stack header controls on small screens */
-@media (max-width: 640px) {
-  .header-bar {
-    flex-direction: column !important;
-    gap: 8px !important;
-    align-items: stretch !important;
-  }
-  .header-controls {
-    flex-wrap: wrap !important;
-  }
-  .header-controls input,
-  .header-controls select {
-    flex: 1 !important;
-    min-width: 0 !important;
-  }
+/* ReactFlow overrides */
+.react-flow__edge-text {
+  font-size: 11px !important;
+  font-family: 'Inter', system-ui !important;
+}
+.react-flow__edge-textbg {
+  fill: var(--bg-elevated) !important;
+  fill-opacity: 0.95 !important;
+  rx: 4 !important;
+  ry: 4 !important;
+}
+.react-flow__controls {
+  box-shadow: var(--shadow) !important;
+  border-radius: var(--radius) !important;
+  overflow: hidden;
+}
+.react-flow__controls button {
+  background: var(--bg-elevated) !important;
+  border-color: var(--border) !important;
+  color: var(--text-secondary) !important;
+  width: 28px !important;
+  height: 28px !important;
+}
+.react-flow__controls button:hover {
+  background: var(--bg-hover) !important;
+  color: var(--text-primary) !important;
+}
+.react-flow__controls button svg {
+  fill: currentColor !important;
+}
+.react-flow__minimap {
+  box-shadow: var(--shadow) !important;
+  border-radius: var(--radius) !important;
+  overflow: hidden;
+}
+.react-flow__background {
+  opacity: 0.4;
 }

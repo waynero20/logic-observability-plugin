@@ -1,10 +1,37 @@
 import type { IRNode } from '../types';
 
 const badgeColors: Record<string, { bg: string; text: string; label: string }> = {
-  deterministic: { bg: 'rgba(34,197,94,0.15)', text: 'var(--deterministic)', label: 'Rule-based' },
-  configurable: { bg: 'rgba(245,158,11,0.15)', text: 'var(--configurable)', label: 'Config-driven' },
-  probabilistic: { bg: 'rgba(139,92,246,0.15)', text: 'var(--probabilistic)', label: 'AI-powered' },
+  deterministic: { bg: 'var(--green-dim)', text: 'var(--green)', label: 'Rule-based' },
+  configurable: { bg: 'var(--amber-dim)', text: 'var(--amber)', label: 'Config-driven' },
+  probabilistic: { bg: 'var(--purple-dim)', text: 'var(--purple)', label: 'AI-powered' },
 };
+
+const typeIcons: Record<string, string> = {
+  task: 'Task',
+  decision: 'Decision',
+  start: 'Start',
+  end: 'End',
+  parallel_split: 'Fork',
+  parallel_join: 'Join',
+};
+
+function Section({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div style={{ marginBottom: 16 }}>
+      <div style={{
+        fontSize: 10,
+        fontWeight: 600,
+        color: 'var(--text-muted)',
+        textTransform: 'uppercase',
+        letterSpacing: 0.8,
+        marginBottom: 6,
+      }}>
+        {label}
+      </div>
+      {children}
+    </div>
+  );
+}
 
 export function NodePanel({ node, onClose }: { node: IRNode | null; onClose: () => void }) {
   if (!node) return null;
@@ -14,120 +41,214 @@ export function NodePanel({ node, onClose }: { node: IRNode | null; onClose: () 
   return (
     <div style={{
       position: 'absolute',
-      right: 0,
-      top: 0,
-      bottom: 0,
-      width: 'min(320px, 85vw)',
+      right: 12,
+      top: 12,
+      bottom: 12,
+      width: 300,
       background: 'var(--bg-surface)',
-      borderLeft: '1px solid var(--border)',
-      padding: '16px 18px',
+      border: '1px solid var(--border-strong)',
+      borderRadius: 'var(--radius-lg)',
+      padding: '18px 16px',
       overflowY: 'auto',
       zIndex: 10,
-      boxShadow: '-4px 0 20px rgba(0,0,0,0.4)',
+      boxShadow: 'var(--shadow-lg)',
+      animation: 'slideIn 150ms ease',
     }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 14 }}>
-        <h3 style={{ fontSize: 15, fontWeight: 600, lineHeight: 1.3, flex: 1, wordBreak: 'break-word' }}>{node.label}</h3>
+      <style>{`
+        @keyframes slideIn {
+          from { opacity: 0; transform: translateX(12px); }
+          to { opacity: 1; transform: translateX(0); }
+        }
+      `}</style>
+
+      {/* Header */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
+        <div style={{ flex: 1 }}>
+          <h3 style={{
+            fontSize: 14,
+            fontWeight: 600,
+            lineHeight: 1.4,
+            wordBreak: 'break-word',
+          }}>
+            {node.label}
+          </h3>
+          <div style={{
+            fontSize: 11,
+            color: 'var(--text-muted)',
+            marginTop: 4,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6,
+          }}>
+            <span style={{
+              display: 'inline-block',
+              padding: '1px 6px',
+              borderRadius: 3,
+              background: 'var(--bg-hover)',
+              fontSize: 10,
+              fontWeight: 600,
+              textTransform: 'uppercase',
+              letterSpacing: 0.5,
+            }}>
+              {typeIcons[node.type] || node.type}
+            </span>
+            <span style={{ fontFamily: 'monospace', fontSize: 10 }}>{node.id}</span>
+          </div>
+        </div>
         <button
           onClick={onClose}
-          style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 16, padding: '2px 8px', borderRadius: 4, marginLeft: 8, flexShrink: 0 }}
+          style={{
+            background: 'var(--bg-hover)',
+            border: '1px solid var(--border)',
+            color: 'var(--text-muted)',
+            cursor: 'pointer',
+            fontSize: 14,
+            width: 26,
+            height: 26,
+            borderRadius: 'var(--radius-sm)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            marginLeft: 8,
+            flexShrink: 0,
+            transition: 'all var(--transition)',
+          }}
+          onMouseEnter={e => {
+            (e.target as HTMLElement).style.background = 'var(--bg-active)';
+            (e.target as HTMLElement).style.color = 'var(--text-primary)';
+          }}
+          onMouseLeave={e => {
+            (e.target as HTMLElement).style.background = 'var(--bg-hover)';
+            (e.target as HTMLElement).style.color = 'var(--text-muted)';
+          }}
         >
           &times;
         </button>
       </div>
 
+      {/* Divider */}
+      <div style={{ height: 1, background: 'var(--border)', marginBottom: 16 }} />
+
       {badge && (
-        <span style={{
-          display: 'inline-block',
-          fontSize: 11,
-          padding: '3px 8px',
-          borderRadius: 4,
-          background: badge.bg,
-          color: badge.text,
-          marginBottom: 12,
-        }}>
-          {badge.label}
-        </span>
+        <div style={{ marginBottom: 16 }}>
+          <span style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 5,
+            fontSize: 11,
+            fontWeight: 500,
+            padding: '4px 10px',
+            borderRadius: 'var(--radius-sm)',
+            background: badge.bg,
+            color: badge.text,
+          }}>
+            <span style={{
+              width: 6,
+              height: 6,
+              borderRadius: '50%',
+              background: badge.text,
+            }} />
+            {badge.label}
+          </span>
+        </div>
       )}
 
       {node.description && (
-        <div style={{ marginBottom: 12 }}>
-          <div style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 4 }}>Description</div>
-          <div style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.4 }}>{node.description}</div>
-        </div>
+        <Section label="Description">
+          <div style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.5 }}>{node.description}</div>
+        </Section>
       )}
 
       {node.code_ref && (
-        <div style={{ marginBottom: 12 }}>
-          <div style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 4 }}>Code Reference</div>
-          <code style={{ fontSize: 12, color: 'var(--accent)', background: 'var(--bg-elevated)', padding: '2px 6px', borderRadius: 3, wordBreak: 'break-all' }}>
+        <Section label="Code Reference">
+          <code style={{
+            display: 'inline-block',
+            fontSize: 11,
+            color: 'var(--accent)',
+            background: 'var(--accent-dim)',
+            padding: '3px 8px',
+            borderRadius: 4,
+            wordBreak: 'break-all',
+            fontFamily: 'monospace',
+          }}>
             {node.code_ref}
           </code>
-        </div>
+        </Section>
       )}
 
       {node.calls && node.calls.length > 0 && (
-        <div style={{ marginBottom: 12 }}>
-          <div style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 4 }}>Calls</div>
-          {node.calls.map((call, i) => (
-            <code key={i} style={{ display: 'block', fontSize: 11, color: 'var(--text-secondary)', background: 'var(--bg-elevated)', padding: '2px 6px', borderRadius: 3, marginBottom: 2, wordBreak: 'break-all' }}>
-              {call}
-            </code>
-          ))}
-        </div>
+        <Section label="Calls">
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+            {node.calls.map((call, i) => (
+              <code key={i} style={{
+                display: 'block',
+                fontSize: 11,
+                color: 'var(--text-secondary)',
+                background: 'var(--bg-hover)',
+                padding: '4px 8px',
+                borderRadius: 4,
+                wordBreak: 'break-all',
+                fontFamily: 'monospace',
+              }}>
+                {call}
+              </code>
+            ))}
+          </div>
+        </Section>
       )}
 
       {node.reason_codes && node.reason_codes.length > 0 && (
-        <div style={{ marginBottom: 12 }}>
-          <div style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 4 }}>Reason Codes</div>
+        <Section label="Reason Codes">
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
             {node.reason_codes.map((code, i) => (
-              <span key={i} style={{ fontSize: 11, padding: '2px 6px', borderRadius: 3, background: 'var(--bg-elevated)', color: 'var(--text-secondary)' }}>
+              <span key={i} style={{
+                fontSize: 10,
+                fontWeight: 500,
+                padding: '3px 7px',
+                borderRadius: 4,
+                background: 'var(--bg-hover)',
+                color: 'var(--text-secondary)',
+              }}>
                 {code}
               </span>
             ))}
           </div>
-        </div>
+        </Section>
       )}
 
       {node.span_name && (
-        <div style={{ marginBottom: 12 }}>
-          <div style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 4 }}>Tracer Span</div>
-          <code style={{ fontSize: 12, color: 'var(--text-secondary)', wordBreak: 'break-all' }}>{node.span_name}</code>
-        </div>
+        <Section label="Tracer Span">
+          <code style={{ fontSize: 11, color: 'var(--blue)', fontFamily: 'monospace' }}>{node.span_name}</code>
+        </Section>
       )}
 
       {node.model && (
-        <div style={{ marginBottom: 12 }}>
-          <div style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 4 }}>AI Model</div>
-          <code style={{ fontSize: 12, color: 'var(--probabilistic)' }}>{node.model}</code>
-        </div>
+        <Section label="AI Model">
+          <code style={{ fontSize: 11, color: 'var(--purple)', fontFamily: 'monospace' }}>{node.model}</code>
+        </Section>
       )}
 
       {node.confidence && (
-        <div style={{ marginBottom: 12 }}>
-          <div style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 4 }}>Confidence</div>
+        <Section label="Confidence">
           <span style={{
             display: 'inline-block',
             fontSize: 11,
+            fontWeight: 500,
             padding: '3px 8px',
             borderRadius: 4,
-            background: node.confidence === 'static_plus_runtime' ? 'rgba(34,197,94,0.15)' :
-                         node.confidence === 'runtime_only' ? 'rgba(59,130,246,0.15)' :
-                         'rgba(156,163,175,0.15)',
-            color: node.confidence === 'static_plus_runtime' ? '#22c55e' :
-                   node.confidence === 'runtime_only' ? '#3b82f6' :
-                   '#9ca3af',
+            background: node.confidence === 'static_plus_runtime' ? 'var(--green-dim)' :
+                         node.confidence === 'runtime_only' ? 'var(--blue-dim)' :
+                         'var(--bg-hover)',
+            color: node.confidence === 'static_plus_runtime' ? 'var(--green)' :
+                   node.confidence === 'runtime_only' ? 'var(--blue)' :
+                   'var(--text-muted)',
           }}>
             {node.confidence === 'static_plus_runtime' ? 'Verified (static + runtime)' :
              node.confidence === 'runtime_only' ? 'Runtime only' :
              'Static only'}
           </span>
-        </div>
+        </Section>
       )}
-
-      <div style={{ marginTop: 16, fontSize: 10, color: 'var(--text-muted)' }}>
-        Type: {node.type} | ID: {node.id}
-      </div>
     </div>
   );
 }

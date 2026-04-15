@@ -1,7 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import type { IRFlow } from './types';
-import { FlowSelector } from './components/FlowSelector';
+import { Sidebar } from './components/Sidebar';
 import { FlowCanvas } from './components/FlowCanvas';
+import { FlowHeader } from './components/FlowHeader';
 
 function App() {
   const [flows, setFlows] = useState<IRFlow[]>([]);
@@ -9,6 +10,7 @@ function App() {
   const [filter, setFilter] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   useEffect(() => {
     fetch('/api/flows')
@@ -20,87 +22,76 @@ function App() {
       .catch(() => setError('Failed to load flows'));
   }, []);
 
-  const selectedFlow = flows.find(f => f.flow === selectedFlowId);
+  const selectedFlow = useMemo(
+    () => flows.find(f => f.flow === selectedFlowId),
+    [flows, selectedFlowId]
+  );
 
   if (error) {
     return (
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', color: 'var(--text-muted)' }}>
-        {error}
+      <div style={{
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        height: '100vh',
+        gap: 12,
+        color: 'var(--text-muted)',
+      }}>
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--red)" strokeWidth="1.5">
+          <circle cx="12" cy="12" r="10" />
+          <path d="M12 8v4M12 16h.01" />
+        </svg>
+        <span style={{ fontSize: 14 }}>{error}</span>
       </div>
     );
   }
 
   if (flows.length === 0) {
     return (
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', color: 'var(--text-muted)' }}>
-        No flows found. Point the viewer at a directory containing IR YAML files.
+      <div style={{
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        height: '100vh',
+        gap: 16,
+        color: 'var(--text-muted)',
+      }}>
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+          <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
+        </svg>
+        <span style={{ fontSize: 14 }}>Loading flows...</span>
       </div>
     );
   }
 
   return (
     <>
-      <div className="header-bar" style={{
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        padding: '10px 20px',
-        background: 'var(--bg-surface)',
-        borderBottom: '1px solid var(--border)',
-        flexShrink: 0,
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-primary)', letterSpacing: -0.3 }}>
-            Logic Observer
-          </div>
+      <Sidebar
+        flows={flows}
+        selected={selectedFlowId}
+        onSelect={setSelectedFlowId}
+        collapsed={sidebarCollapsed}
+        onToggle={() => setSidebarCollapsed(!sidebarCollapsed)}
+      />
+
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+        {selectedFlow && (
+          <FlowHeader
+            flow={selectedFlow}
+            search={search}
+            onSearchChange={setSearch}
+            filter={filter}
+            onFilterChange={setFilter}
+          />
+        )}
+
+        <div style={{ flex: 1, minHeight: 0, position: 'relative' }}>
           {selectedFlow && (
-            <span style={{ fontSize: 12, color: 'var(--text-muted)', borderLeft: '1px solid var(--border)', paddingLeft: 10 }}>
-              {selectedFlow.nodes.length} nodes &middot; {selectedFlow.edges.length} edges
-            </span>
+            <FlowCanvas flow={selectedFlow} filter={filter} search={search} />
           )}
         </div>
-        <div className="header-controls" style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-          <input
-            type="text"
-            placeholder="Search nodes..."
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            style={{
-              background: 'var(--bg-elevated)',
-              border: '1px solid var(--border)',
-              borderRadius: 6,
-              padding: '6px 12px',
-              fontSize: 13,
-              color: 'var(--text-primary)',
-              width: 200,
-              outline: 'none',
-            }}
-          />
-          <select
-            value={filter || ''}
-            onChange={e => setFilter(e.target.value || null)}
-            style={{
-              background: 'var(--bg-elevated)',
-              border: '1px solid var(--border)',
-              borderRadius: 6,
-              padding: '6px 12px',
-              fontSize: 13,
-              color: 'var(--text-primary)',
-              outline: 'none',
-            }}
-          >
-            <option value="">All types</option>
-            <option value="deterministic">Deterministic</option>
-            <option value="configurable">Configurable</option>
-            <option value="probabilistic">AI-powered</option>
-          </select>
-        </div>
-      </div>
-
-      <FlowSelector flows={flows} selected={selectedFlowId} onSelect={setSelectedFlowId} />
-
-      <div style={{ flex: 1, minHeight: 0, position: 'relative' }}>
-        {selectedFlow && <FlowCanvas flow={selectedFlow} filter={filter} search={search} />}
       </div>
     </>
   );
