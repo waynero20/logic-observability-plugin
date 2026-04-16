@@ -244,7 +244,7 @@ function renderIndex(flows: IRFlow[]): string {
   .main-header .desc { font-size: 13px; color: var(--text2); }
   .main-header .meta { font-size: 12px; color: var(--text2); margin-top: 4px; }
   .main-header .meta a { color: var(--accent); text-decoration: none; }
-  .main-body { flex: 1; overflow: auto; padding: 24px; }
+  .main-body { flex: 1; overflow: hidden; padding: 24px; display: flex; flex-direction: column; }
 
   /* Legend */
   .legend { display: flex; gap: 16px; margin-bottom: 20px; flex-wrap: wrap; }
@@ -252,8 +252,15 @@ function renderIndex(flows: IRFlow[]): string {
   .legend-dot { width: 10px; height: 10px; border-radius: 3px; }
 
   /* SVG Flow diagram */
-  .flow-canvas { overflow: auto; }
-  .flow-canvas svg { display: block; }
+  .flow-canvas { overflow: hidden; position: relative; flex: 1; min-height: 0; }
+  .flow-canvas svg { display: block; cursor: grab; transform-origin: 0 0; }
+  .flow-canvas svg:active { cursor: grabbing; }
+
+  /* Zoom controls */
+  .zoom-controls { position: absolute; top: 12px; right: 12px; display: flex; gap: 4px; z-index: 10; }
+  .zoom-btn { width: 32px; height: 32px; border: 1px solid var(--border); background: var(--bg2); color: var(--text); border-radius: 6px; cursor: pointer; font-size: 16px; display: flex; align-items: center; justify-content: center; transition: background 0.15s; }
+  .zoom-btn:hover { background: var(--bg3); }
+  .zoom-level { font-size: 11px; color: var(--text2); padding: 0 6px; display: flex; align-items: center; user-select: none; }
 
   /* Empty state */
   .empty { display: flex; align-items: center; justify-content: center; height: 100%; color: var(--text2); font-size: 15px; }
@@ -290,7 +297,15 @@ function renderIndex(flows: IRFlow[]): string {
         <div class="legend-item"><div class="legend-dot" style="background:#bc8cff"></div> Probabilistic (AI)</div>
         <div class="legend-item"><div class="legend-dot" style="background:#484f58"></div> Exit / End</div>
       </div>
-      <div class="flow-canvas" id="flow-canvas"></div>
+      <div class="flow-canvas" id="flow-canvas">
+        <div class="zoom-controls">
+          <button class="zoom-btn" id="zoom-in" title="Zoom in">+</button>
+          <button class="zoom-btn" id="zoom-out" title="Zoom out">&minus;</button>
+          <span class="zoom-level" id="zoom-level">100%</span>
+          <button class="zoom-btn" id="zoom-fit" title="Fit to view">&#x2922;</button>
+          <button class="zoom-btn" id="zoom-reset" title="Reset zoom">1:1</button>
+        </div>
+      </div>
     </div>
   </div>
 </div>
@@ -459,7 +474,7 @@ function renderSvgDiagram(flow) {
     return lines;
   }
 
-  let svg = '<svg viewBox="0 0 ' + svgW + ' ' + svgH + '" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto;max-width:' + svgW + 'px">';
+  let svg = '<svg viewBox="0 0 ' + svgW + ' ' + svgH + '" xmlns="http://www.w3.org/2000/svg" width="' + svgW + '" height="' + svgH + '">';
   svg += '<defs><marker id="arrow" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#484f58"/></marker></defs>';
 
   // Draw edges first (behind nodes)
@@ -552,9 +567,88 @@ function renderFlow(flow) {
     ' &middot; ' + (flow.tags || []).map(t => '<span class="tag tag-other">' + esc(t) + '</span>').join(' ');
 
   document.getElementById('empty-state').style.display = 'none';
-  document.getElementById('flow-content').style.display = '';
-  document.getElementById('flow-canvas').innerHTML = renderSvgDiagram(flow);
+  const content = document.getElementById('flow-content');
+  content.style.display = 'flex';
+  content.style.flexDirection = 'column';
+  content.style.flex = '1';
+  content.style.minHeight = '0';
+
+  // Preserve zoom controls, replace only the SVG
+  const canvas = document.getElementById('flow-canvas');
+  const oldSvg = canvas.querySelector('svg');
+  if (oldSvg) oldSvg.remove();
+  canvas.insertAdjacentHTML('beforeend', renderSvgDiagram(flow));
+
+  // Auto-fit after a tick to let layout settle
+  scale = 1; panX = 0; panY = 0;
+  setTimeout(fitToView, 50);
 }
+
+// ── Zoom & Pan ─────────────────────────────────────────────────────
+
+let scale = 1;
+let panX = 0, panY = 0;
+let isPanning = false;
+let startX = 0, startY = 0;
+
+function updateTransform() {
+  const svg = document.querySelector('#flow-canvas svg');
+  if (!svg) return;
+  svg.style.transform = 'translate(' + panX + 'px,' + panY + 'px) scale(' + scale + ')';
+  document.getElementById('zoom-level').textContent = Math.round(scale * 100) + '%';
+}
+
+function resetZoom() {
+  scale = 1; panX = 0; panY = 0;
+  updateTransform();
+}
+
+function fitToView() {
+  const svg = document.querySelector('#flow-canvas svg');
+  const canvas = document.getElementById('flow-canvas');
+  if (!svg || !canvas) return;
+  const vb = svg.getAttribute('viewBox');
+  if (!vb) return;
+  const [,, svgW, svgH] = vb.split(' ').map(Number);
+  const cw = canvas.clientWidth - 24;
+  const ch = canvas.clientHeight - 24;
+  scale = Math.min(cw / svgW, ch / svgH, 2);
+  panX = Math.max(0, (cw - svgW * scale) / 2);
+  panY = Math.max(0, (ch - svgH * scale) / 2);
+  updateTransform();
+}
+
+document.getElementById('zoom-in').addEventListener('click', () => { scale = Math.min(scale * 1.25, 5); updateTransform(); });
+document.getElementById('zoom-out').addEventListener('click', () => { scale = Math.max(scale / 1.25, 0.1); updateTransform(); });
+document.getElementById('zoom-reset').addEventListener('click', resetZoom);
+document.getElementById('zoom-fit').addEventListener('click', fitToView);
+
+// Mouse wheel zoom (pinch-to-zoom on trackpad)
+document.getElementById('flow-canvas').addEventListener('wheel', (e) => {
+  e.preventDefault();
+  const delta = e.deltaY > 0 ? 0.9 : 1.1;
+  const rect = e.currentTarget.getBoundingClientRect();
+  const mx = e.clientX - rect.left;
+  const my = e.clientY - rect.top;
+  const newScale = Math.min(Math.max(scale * delta, 0.1), 5);
+  // Zoom toward cursor position
+  panX = mx - (mx - panX) * (newScale / scale);
+  panY = my - (my - panY) * (newScale / scale);
+  scale = newScale;
+  updateTransform();
+}, { passive: false });
+
+// Pan with mouse drag
+document.getElementById('flow-canvas').addEventListener('mousedown', (e) => {
+  if (e.target.closest('.zoom-controls')) return;
+  isPanning = true; startX = e.clientX - panX; startY = e.clientY - panY;
+});
+document.addEventListener('mousemove', (e) => {
+  if (!isPanning) return;
+  panX = e.clientX - startX; panY = e.clientY - startY;
+  updateTransform();
+});
+document.addEventListener('mouseup', () => { isPanning = false; });
 
 // Auto-select first
 if (FLOWS.length > 0) {
