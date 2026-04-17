@@ -3,6 +3,7 @@ import { join, basename, dirname, relative } from 'path';
 import { Project, SyntaxKind, Node, SourceFile } from 'ts-morph';
 import yaml from 'js-yaml';
 import { validate } from './validate-ir.js';
+import { extractDartFunction, extractAllDartExports } from './extractors/dart-extractor.js';
 
 // ─── Types ───
 
@@ -732,14 +733,17 @@ const results: IRFlow[] = [];
 for (const ref of positional) {
   const colonIdx = ref.lastIndexOf(':');
   const hasLine = colonIdx > 0 && !isNaN(parseInt(ref.slice(colonIdx + 1), 10));
+  const isDart = hasLine ? ref.slice(0, colonIdx).endsWith('.dart') : ref.endsWith('.dart');
 
   if (hasLine) {
     const filePath = ref.slice(0, colonIdx);
     const line = parseInt(ref.slice(colonIdx + 1), 10);
     console.log(`Extracting: ${filePath}:${line}...`);
-    const flow = extractFunction(filePath, line, outputDir);
+    const flow = isDart
+      ? extractDartFunction(filePath, line, outputDir)
+      : extractFunction(filePath, line, outputDir);
     if (flow) {
-      if (!skipLabels) cleanLabels(flow);
+      if (!skipLabels && !isDart) cleanLabels(flow); // Dart extractor cleans labels internally
       const outputPath = join(outputDir, `${flow.flow}.yaml`);
       const issues = validate(outputPath);
       const errors = issues.filter((i: string) => !i.startsWith('Warning:'));
@@ -754,9 +758,11 @@ for (const ref of positional) {
   } else {
     // No line number — extract all exported functions
     console.log(`Extracting all exports from: ${ref}...`);
-    const flows = extractAllExports(ref, outputDir);
+    const flows = isDart
+      ? extractAllDartExports(ref, outputDir)
+      : extractAllExports(ref, outputDir);
     for (const flow of flows) {
-      if (!skipLabels) cleanLabels(flow);
+      if (!skipLabels && !isDart) cleanLabels(flow); // Dart extractor cleans labels internally
       const outputPath = join(outputDir, `${flow.flow}.yaml`);
       const issues = validate(outputPath);
       const errors = issues.filter((i: string) => !i.startsWith('Warning:'));

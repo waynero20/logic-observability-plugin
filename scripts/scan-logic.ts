@@ -2,6 +2,7 @@ import { existsSync, readFileSync, readdirSync } from 'fs';
 import { join, resolve, dirname } from 'path';
 import yaml from 'js-yaml';
 import { scanProject, type ScanResult, type ScanItem } from './extractors/function-scanner.js';
+import { scanDartProject } from './extractors/dart-scanner.js';
 
 // ─── CLI argument parsing ───
 
@@ -72,8 +73,9 @@ function detectProjectType(dir: string): 'typescript' | 'dart' | 'python' | 'go'
     return false;
   };
 
-  if (searchUp(dir, 'tsconfig.json') || searchUp(dir, 'package.json')) return 'typescript';
+  // Check Dart before TypeScript — pubspec.yaml in target dir takes priority over package.json in parent
   if (searchUp(dir, 'pubspec.yaml')) return 'dart';
+  if (searchUp(dir, 'tsconfig.json') || searchUp(dir, 'package.json')) return 'typescript';
   if (searchUp(dir, 'pyproject.toml') || searchUp(dir, 'setup.py') || searchUp(dir, 'requirements.txt')) return 'python';
   if (searchUp(dir, 'go.mod')) return 'go';
   return 'unknown';
@@ -187,7 +189,7 @@ function runCheckMode(result: ScanResult, projectRoot: string): void {
 
 const projectType = detectProjectType(resolvedDir);
 
-if (projectType !== 'typescript') {
+if (projectType !== 'typescript' && projectType !== 'dart') {
   if (jsonMode) {
     console.log(JSON.stringify({
       projectType,
@@ -204,14 +206,16 @@ if (projectType !== 'typescript') {
     }, null, 2));
   } else {
     console.log(`Project type: ${projectType}`);
-    console.log(`Automated scanning is only available for TypeScript projects.`);
+    console.log(`Automated scanning is only available for TypeScript and Dart projects.`);
     console.log(`For ${projectType} projects, use conversational mode in Claude Code.`);
   }
   process.exit(0);
 }
 
 const existingIR = loadExistingIR(process.cwd());
-const result = scanProject(resolvedDir, existingIR);
+const result = projectType === 'dart'
+  ? scanDartProject(resolvedDir, existingIR)
+  : scanProject(resolvedDir, existingIR);
 
 if (jsonMode) {
   console.log(JSON.stringify(result, null, 2));

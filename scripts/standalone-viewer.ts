@@ -173,7 +173,7 @@ function loadFlows(): IRFlow[] {
 // ── HTML Template ───────────────────────────────────────────────────
 
 function esc(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&apos;');
 }
 
 function renderIndex(flows: IRFlow[]): string {
@@ -336,7 +336,7 @@ document.getElementById('sidebar-body').addEventListener('click', e => {
 
 function esc(s) {
   if (!s) return '';
-  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&apos;');
 }
 
 // ── Graph layout (simple layered/Sugiyama-lite for LR flow) ──────

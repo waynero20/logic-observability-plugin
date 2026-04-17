@@ -1,0 +1,12 @@
+name: sample_app
+description: Test fixture for Dart scanner
+version: 1.0.0
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_riverpod: ^2.0.0
+  go_router: ^10.0.0
