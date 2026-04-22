@@ -252,9 +252,9 @@ function walkIfStatement(ifStmt: any, ctx: ExtractContext, previousId: string): 
   if (Node.isBlock(thenBlock)) {
     thenLastId = walkBlock(thenBlock.getStatements(), ctx, decisionId);
   }
-  // Mark the first edge from decision (to then-branch) as "yes"
+  // Mark the first edge from decision (to then-branch) as "Yes"
   const yesEdge = ctx.edges.find(e => e.from === decisionId && !e.condition);
-  if (yesEdge) yesEdge.condition = 'yes';
+  if (yesEdge) yesEdge.condition = 'Yes';
 
   // Else branch ("no" path)
   const elseStmt = ifStmt.getElseStatement();
@@ -263,12 +263,12 @@ function walkIfStatement(ifStmt: any, ctx: ExtractContext, previousId: string): 
     if (Node.isIfStatement(elseStmt)) {
       elseLastId = walkIfStatement(elseStmt, ctx, decisionId);
       const elseEdge = ctx.edges.find(e => e.from === decisionId && e.to !== (yesEdge?.to) && !e.condition);
-      if (elseEdge) elseEdge.condition = 'no';
+      if (elseEdge) elseEdge.condition = 'No';
     } else if (Node.isBlock(elseStmt)) {
       elseLastId = walkBlock(elseStmt.getStatements(), ctx, decisionId);
       if (elseLastId !== decisionId) {
         const elseEdge = ctx.edges.find(e => e.from === decisionId && e.to !== (yesEdge?.to) && !e.condition);
-        if (elseEdge) elseEdge.condition = 'no';
+        if (elseEdge) elseEdge.condition = 'No';
       }
     }
   }
@@ -278,10 +278,10 @@ function walkIfStatement(ifStmt: any, ctx: ExtractContext, previousId: string): 
 
   if (!elseStmt) {
     // No else: "no" falls through. Create merge point that both paths converge to.
-    const merge: IRNode = { id: mergeId, type: 'task', label: '(merge)', logic_type: 'deterministic', confidence: 'static_only' };
+    const merge: IRNode = { id: mergeId, type: 'parallel_join', label: 'Continue', logic_type: 'deterministic', confidence: 'static_only' };
     ctx.nodes.push(merge);
     // "no" edge from decision to merge (fall-through)
-    ctx.edges.push({ from: decisionId, to: mergeId, condition: 'no', confidence: 'static_only' });
+    ctx.edges.push({ from: decisionId, to: mergeId, condition: 'Otherwise', confidence: 'static_only' });
     // then-branch also flows to merge
     if (thenLastId !== decisionId) {
       ctx.edges.push({ from: thenLastId, to: mergeId, confidence: 'static_only' });
@@ -291,7 +291,7 @@ function walkIfStatement(ifStmt: any, ctx: ExtractContext, previousId: string): 
 
   if (thenLastId !== decisionId && elseLastId !== decisionId && thenLastId !== elseLastId) {
     // Both branches produced nodes — create a merge point
-    const merge: IRNode = { id: mergeId, type: 'task', label: '(merge)', logic_type: 'deterministic', confidence: 'static_only' };
+    const merge: IRNode = { id: mergeId, type: 'parallel_join', label: 'Continue', logic_type: 'deterministic', confidence: 'static_only' };
     ctx.nodes.push(merge);
     ctx.edges.push({ from: thenLastId, to: mergeId, confidence: 'static_only' });
     ctx.edges.push({ from: elseLastId, to: mergeId, confidence: 'static_only' });
@@ -337,7 +337,7 @@ function walkSwitchStatement(switchStmt: any, ctx: ExtractContext, previousId: s
   // If multiple case branches, create merge
   if (caseEnds.length > 1) {
     const mergeId = makeId('merge', ctx);
-    const merge: IRNode = { id: mergeId, type: 'task', label: '(merge)', logic_type: 'deterministic', confidence: 'static_only' };
+    const merge: IRNode = { id: mergeId, type: 'parallel_join', label: 'Continue', logic_type: 'deterministic', confidence: 'static_only' };
     ctx.nodes.push(merge);
     for (const end of caseEnds) {
       ctx.edges.push({ from: end, to: mergeId, confidence: 'static_only' });
@@ -411,10 +411,13 @@ function deriveFlowId(filePath: string, functionName: string): string {
 }
 
 function deriveTitle(flowId: string): string {
-  return flowId
-    .split('-')
-    .map(w => w.charAt(0).toUpperCase() + w.slice(1))
-    .join(' ');
+  const words = flowId.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1));
+  const title = words.join(' ');
+  // Add "Process" suffix if the title is just a noun (e.g., "Login" → "Login Process")
+  if (words.length === 1 && !/(process|flow|workflow|handler|pipeline)/i.test(title)) {
+    return `${title} Process`;
+  }
+  return title;
 }
 
 export function extractFunction(
@@ -566,83 +569,114 @@ function cleanLabel(raw: string): string {
   }
   // Function calls: remove arguments and parens
   label = label.replace(/\(.*\)$/s, '');
-  // Property access chains: use last meaningful part
+  // Property access chains: translate to business meaning
   if (label.includes('.')) {
     const parts = label.split('.');
-    // Keep last 2 parts if second-to-last is meaningful (e.g. db.insert → "DB insert")
     const meaningful = parts.filter(p => !['this', 'await', 'self', 'prototype'].includes(p));
+    // Recognize common patterns and translate to business language
+    const joined = meaningful.join('.');
+    // state.copyWith → "Update current status"
+    if (/state\.copy\w*/i.test(joined)) return 'Update current status';
+    // db/api/service patterns: keep last 2 parts
     label = meaningful.length >= 2 ? meaningful.slice(-2).join(' ') : meaningful[meaningful.length - 1];
   }
   // CamelCase → space separated
   label = label.replace(/([a-z])([A-Z])/g, '$1 $2');
   // snake_case → space separated
   label = label.replace(/_/g, ' ');
-  // Common verb improvements for business readability
+  // Business-friendly verb replacements (plain English a CEO would understand)
   label = label
-    .replace(/^get /i, 'Fetch ')
+    .replace(/^get /i, 'Retrieve ')
     .replace(/^set /i, 'Update ')
     .replace(/^is /i, 'Check if ')
-    .replace(/^has /i, 'Check has ')
-    .replace(/^can /i, 'Check can ')
-    .replace(/^should /i, 'Check should ')
+    .replace(/^has /i, 'Verify ')
+    .replace(/^can /i, 'Verify permission to ')
+    .replace(/^should /i, 'Determine whether to ')
     .replace(/^find /i, 'Look up ')
-    .replace(/^create /i, 'Create ')
+    .replace(/^create /i, 'Create new ')
     .replace(/^delete /i, 'Remove ')
     .replace(/^remove /i, 'Remove ')
     .replace(/^update /i, 'Update ')
     .replace(/^send /i, 'Send ')
-    .replace(/^fetch /i, 'Fetch ')
-    .replace(/^validate /i, 'Validate ')
+    .replace(/^fetch /i, 'Retrieve ')
+    .replace(/^validate /i, 'Verify ')
     .replace(/^check /i, 'Check ')
-    .replace(/^handle /i, 'Handle ')
+    .replace(/^handle /i, 'Process ')
     .replace(/^process /i, 'Process ')
-    .replace(/^parse /i, 'Parse ')
-    .replace(/^build /i, 'Build ')
-    .replace(/^generate /i, 'Generate ')
-    .replace(/^compute /i, 'Compute ')
+    .replace(/^parse /i, 'Read ')
+    .replace(/^build /i, 'Prepare ')
+    .replace(/^generate /i, 'Create ')
+    .replace(/^compute /i, 'Calculate ')
     .replace(/^calculate /i, 'Calculate ')
-    .replace(/^transform /i, 'Transform ')
+    .replace(/^transform /i, 'Convert ')
     .replace(/^convert /i, 'Convert ')
     .replace(/^load /i, 'Load ')
     .replace(/^save /i, 'Save ')
-    .replace(/^init /i, 'Initialize ')
+    .replace(/^init /i, 'Set up ')
     .replace(/^notify /i, 'Notify ')
-    .replace(/^emit /i, 'Emit ')
-    .replace(/^log /i, 'Log ')
-    .replace(/^aggregate /i, 'Aggregate ');
+    .replace(/^emit /i, 'Send notification: ')
+    .replace(/^log /i, 'Record ')
+    .replace(/^aggregate /i, 'Combine ')
+    .replace(/^authenticate/i, 'Verify credentials')
+    .replace(/^authorize/i, 'Check permissions')
+    .replace(/^store /i, 'Save ')
+    .replace(/^revoke /i, 'Cancel ')
+    .replace(/^copy with/i, 'Update status');
   // Capitalize first letter of each word
   label = label.replace(/\b\w/g, c => c.toUpperCase());
   // Trim and limit length
   label = label.trim();
-  if (label.length > 50) label = label.slice(0, 47) + '...';
+  if (label.length > 60) label = label.slice(0, 57) + '...';
   return label || raw;
 }
 
 function cleanDecisionLabel(raw: string): string {
   let label = raw;
-  // Strip code noise from conditions
-  label = label.replace(/^!/, 'Not ');
-  label = label.replace(/\s*===?\s*/g, ' equals ');
-  label = label.replace(/\s*!==?\s*/g, ' not equals ');
-  label = label.replace(/\s*&&\s*/g, ' and ');
-  label = label.replace(/\s*\|\|\s*/g, ' or ');
-  label = label.replace(/\.length\s*/g, ' count ');
-  label = label.replace(/\.includes\([^)]*\)/g, ' matches');
-  label = label.replace(/\.has\([^)]*\)/g, ' exists');
-  // Remove quotes
-  label = label.replace(/['"]/g, '');
-  // Property access → space
-  label = label.replace(/\./g, ' ');
-  // CamelCase → space
-  label = label.replace(/([a-z])([A-Z])/g, '$1 $2');
-  // snake_case → space
-  label = label.replace(/_/g, ' ');
-  // Add question mark if not present
+
+  // Recognize common null/undefined checks and rephrase as business questions
+  if (/==\s*null|===?\s*null|!=\s*null|!==?\s*null/i.test(label)) {
+    const subject = label.replace(/\s*(===?|!==?)\s*null/g, '').replace(/[!()]/g, '').trim();
+    const subjectClean = subject.replace(/\./g, ' ').replace(/([a-z])([A-Z])/g, '$1 $2').replace(/_/g, ' ').toLowerCase();
+    if (/^!|!=/.test(raw)) {
+      label = `Was ${subjectClean} found`;
+    } else {
+      label = `Is ${subjectClean} missing`;
+    }
+  }
+  // Recognize boolean property checks: user.isBlocked, isActive, etc.
+  else if (/\bis[A-Z]\w*/.test(label) || /\.is[A-Z]/.test(label)) {
+    const boolProp = label.match(/is([A-Z]\w*)/);
+    if (boolProp) {
+      const propName = boolProp[1].replace(/([a-z])([A-Z])/g, '$1 $2').toLowerCase();
+      label = `Is the user ${propName}`;
+    }
+  }
+  // Recognize .length / .count checks
+  else if (/\.length|\.count|\.size/i.test(label)) {
+    label = label.replace(/\.length|\.count|\.size/gi, '');
+    label = label.replace(/\s*(>|>=|<|<=|===?)\s*\d+/g, '');
+    label = label.replace(/\./g, ' ').replace(/([a-z])([A-Z])/g, '$1 $2').replace(/_/g, ' ');
+    label = `Are there any ${label.trim().toLowerCase()} items`;
+  }
+  else {
+    // Generic cleanup
+    label = label.replace(/^!/, 'Not ');
+    label = label.replace(/\s*===?\s*/g, ' is ');
+    label = label.replace(/\s*!==?\s*/g, ' is not ');
+    label = label.replace(/\s*&&\s*/g, ' and ');
+    label = label.replace(/\s*\|\|\s*/g, ' or ');
+    label = label.replace(/\.includes\([^)]*\)/g, ' contains the value');
+    label = label.replace(/\.has\([^)]*\)/g, ' exists');
+    label = label.replace(/['"]/g, '');
+    label = label.replace(/\./g, ' ');
+    label = label.replace(/([a-z])([A-Z])/g, '$1 $2');
+    label = label.replace(/_/g, ' ');
+  }
+
   label = label.trim();
   if (!label.endsWith('?')) label += '?';
-  // Capitalize first letter
   label = label.charAt(0).toUpperCase() + label.slice(1);
-  if (label.length > 50) label = label.slice(0, 47) + '...';
+  if (label.length > 60) label = label.slice(0, 57) + '...';
   return label || raw;
 }
 

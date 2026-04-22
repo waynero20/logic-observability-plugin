@@ -47,7 +47,7 @@ export function FlowCanvas({ flow, filter, search }: { flow: IRFlow; filter: str
         const matchesSearch = !searchIds || searchIds.has(n.id);
         return {
           ...n,
-          style: matchesFilter && matchesSearch ? {} : { opacity: 0.12 },
+          style: matchesFilter && matchesSearch ? {} : { opacity: 0.1 },
         };
       }),
       edges: result.edges,
@@ -74,7 +74,7 @@ export function FlowCanvas({ flow, filter, search }: { flow: IRFlow; filter: str
         nodesDraggable
         proOptions={{ hideAttribution: true }}
       >
-        <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="rgba(255,255,255,0.03)" />
+        <Background variant={BackgroundVariant.Dots} gap={24} size={1} color="rgba(255,255,255,0.03)" />
         <Controls
           showInteractive={false}
           position="bottom-left"
@@ -90,8 +90,8 @@ export function FlowCanvas({ flow, filter, search }: { flow: IRFlow; filter: str
             background: 'var(--bg-elevated)',
             border: '1px solid var(--border)',
             borderRadius: 'var(--radius)',
-            width: 140,
-            height: 90,
+            width: 150,
+            height: 100,
           }}
           maskColor="rgba(0,0,0,0.6)"
           nodeColor={(node: any) => {
@@ -99,6 +99,7 @@ export function FlowCanvas({ flow, filter, search }: { flow: IRFlow; filter: str
             if (type === 'decision') return '#fbbf24';
             if (type === 'start') return '#34d399';
             if (type === 'end') return '#f87171';
+            if (type === 'parallel_join') return '#3f3f46';
             return '#52525b';
           }}
           pannable

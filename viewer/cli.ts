@@ -169,5 +169,6 @@ await server.listen();
 const port = server.httpServer?.address();
 const actualPort = typeof port === 'object' && port ? port.port : 3200;
 
-console.log(`\n  Logic Observer running at http://localhost:${actualPort}\n`);
+console.log(`\n  Business Flow Viewer running at http://localhost:${actualPort}\n`);
+console.log(`  Open this link in your browser to view your process flows.`);
 console.log(`  Press Ctrl+C to stop.\n`);

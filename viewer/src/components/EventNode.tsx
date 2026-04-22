@@ -8,48 +8,48 @@ export function EventNode({ data, selected }: { data: IRNode; selected?: boolean
 
   return (
     <>
-      <Handle type="target" position={Position.Top} style={{ background: color, width: 7, height: 7, border: '2px solid var(--bg)' }} />
+      <Handle type="target" position={Position.Top} style={{ background: color, width: 8, height: 8, border: '2px solid var(--bg)' }} />
       <div style={{
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
-        gap: 6,
+        gap: 8,
         cursor: 'pointer',
       }}>
         <div style={{
-          width: 36,
-          height: 36,
+          width: 44,
+          height: 44,
           borderRadius: '50%',
           background: selected ? dimColor : 'var(--bg-elevated)',
-          border: `${isEnd ? 2.5 : 1.5}px solid ${selected ? color : 'var(--border-strong)'}`,
+          border: `${isEnd ? 3 : 2}px solid ${selected ? color : 'var(--border-strong)'}`,
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          boxShadow: selected ? `0 0 16px ${dimColor}` : 'var(--shadow-sm)',
-          transition: 'all 150ms ease',
+          boxShadow: selected ? `0 0 20px ${dimColor}` : 'var(--shadow)',
+          transition: 'all 180ms ease',
         }}>
           {isEnd ? (
-            <div style={{ width: 10, height: 10, borderRadius: '50%', background: color }} />
+            <div style={{ width: 14, height: 14, borderRadius: '50%', background: color }} />
           ) : (
-            <svg width="12" height="12" viewBox="0 0 24 24" fill={color} stroke="none">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill={color} stroke="none">
               <polygon points="8,5 19,12 8,19" />
             </svg>
           )}
         </div>
         <div style={{
-          fontSize: 10,
-          color: 'var(--text-muted)',
+          fontSize: 11,
+          color: selected ? 'var(--text-primary)' : 'var(--text-secondary)',
           textAlign: 'center',
-          maxWidth: 140,
-          lineHeight: 1.3,
-          fontWeight: 500,
+          maxWidth: 160,
+          lineHeight: 1.4,
+          fontWeight: 600,
           whiteSpace: 'normal',
           wordBreak: 'break-word',
         }}>
           {data.label}
         </div>
       </div>
-      <Handle type="source" position={Position.Bottom} style={{ background: color, width: 7, height: 7, border: '2px solid var(--bg)' }} />
+      <Handle type="source" position={Position.Bottom} style={{ background: color, width: 8, height: 8, border: '2px solid var(--bg)' }} />
     </>
   );
 }

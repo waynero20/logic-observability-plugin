@@ -1,31 +1,39 @@
 import dagre from '@dagrejs/dagre';
 import type { IRNode, IREdge } from './types';
 
+function isMergeNode(node: IRNode): boolean {
+  return node.type === 'parallel_join' || node.label === 'Continue' || node.label === '(merge)';
+}
+
 function estimateNodeDims(node: IRNode): { width: number; height: number } {
+  // Merge/join nodes are tiny circles
+  if (isMergeNode(node)) {
+    return { width: 30, height: 30 };
+  }
+
   const labelLen = node.label.length;
 
   if (node.type === 'task') {
-    const callsLen = node.calls ? `${node.calls.join(', ')}`.length : 0;
-    const textLen = Math.max(labelLen, callsLen);
-    const w = Math.max(200, Math.min(280, textLen * 7 + 40));
-    const charsPerLine = Math.floor((w - 32) / 7);
+    const hasDescription = !!node.description;
+    const w = Math.max(220, Math.min(300, labelLen * 7.5 + 50));
+    const charsPerLine = Math.floor((w - 36) / 7);
     const labelLines = Math.max(1, Math.ceil(labelLen / charsPerLine));
-    const callsLines = callsLen > 0 ? Math.max(1, Math.ceil(callsLen / charsPerLine)) : 0;
-    const totalLines = labelLines + callsLines;
-    const h = Math.max(50, 30 + totalLines * 20);
+    const descLines = hasDescription ? 1 : 0;
+    const totalLines = labelLines + descLines;
+    const h = Math.max(60, 44 + totalLines * 20);
     return { width: w, height: h };
   }
 
-  if (['decision', 'parallel_split', 'parallel_join'].includes(node.type)) {
-    const w = Math.max(160, Math.min(240, labelLen * 7 + 50));
+  if (['decision', 'parallel_split'].includes(node.type)) {
+    const w = Math.max(180, Math.min(260, labelLen * 7 + 60));
     const charsPerLine = Math.floor(w / 7);
     const lines = Math.max(1, Math.ceil(labelLen / charsPerLine));
-    return { width: w, height: 50 + lines * 16 };
+    return { width: w, height: 60 + lines * 16 };
   }
 
-  // Event (start/end)
-  const w = Math.max(80, Math.min(160, labelLen * 7 + 30));
-  return { width: w, height: 60 };
+  // Event (start/end) — slightly bigger for readability
+  const w = Math.max(100, Math.min(180, labelLen * 7 + 40));
+  return { width: w, height: 70 };
 }
 
 export function layoutFlow(nodes: IRNode[], edges: IREdge[]) {
@@ -33,11 +41,11 @@ export function layoutFlow(nodes: IRNode[], edges: IREdge[]) {
   g.setDefaultEdgeLabel(() => ({}));
   g.setGraph({
     rankdir: 'TB',
-    ranksep: 80,
-    nodesep: 50,
-    edgesep: 30,
-    marginx: 40,
-    marginy: 40,
+    ranksep: 100,
+    nodesep: 60,
+    edgesep: 40,
+    marginx: 50,
+    marginy: 50,
   });
 
   for (const node of nodes) {
@@ -52,11 +60,15 @@ export function layoutFlow(nodes: IRNode[], edges: IREdge[]) {
 
   const xyNodes = nodes.map(node => {
     const pos = g.node(node.id);
-    const nodeType = node.type === 'task'
-      ? 'taskNode'
-      : ['decision', 'parallel_split', 'parallel_join'].includes(node.type)
-        ? 'gatewayNode'
-        : 'eventNode';
+    const merge = isMergeNode(node);
+
+    const nodeType = merge
+      ? 'gatewayNode'
+      : node.type === 'task'
+        ? 'taskNode'
+        : ['decision', 'parallel_split'].includes(node.type)
+          ? 'gatewayNode'
+          : 'eventNode';
 
     return {
       id: node.id,
@@ -72,12 +84,30 @@ export function layoutFlow(nodes: IRNode[], edges: IREdge[]) {
     target: edge.to,
     type: 'smoothstep',
     label: edge.condition || undefined,
-    style: { stroke: '#3f3f46', strokeWidth: 1.5 },
-    labelStyle: { fill: '#a1a1aa', fontSize: 11, fontWeight: 500 },
+    animated: !!edge.runtime?.observed,
+    style: {
+      stroke: edge.condition?.toLowerCase().startsWith('yes') || edge.condition?.toLowerCase().includes('available') || edge.condition?.toLowerCase().includes('active')
+        ? '#34d399'
+        : edge.condition?.toLowerCase().startsWith('no') || edge.condition?.toLowerCase().includes('block') || edge.condition?.toLowerCase().includes('invalid')
+          ? '#f87171'
+          : edge.condition?.toLowerCase() === 'otherwise'
+            ? '#71717a'
+            : '#52525b',
+      strokeWidth: edge.condition ? 2 : 1.5,
+    },
+    labelStyle: {
+      fill: edge.condition?.toLowerCase().startsWith('yes') || edge.condition?.toLowerCase().includes('available')
+        ? '#34d399'
+        : edge.condition?.toLowerCase().startsWith('no') || edge.condition?.toLowerCase().includes('block')
+          ? '#f87171'
+          : '#a1a1aa',
+      fontSize: 11,
+      fontWeight: 600,
+    },
     labelBgStyle: { fill: '#18181c', fillOpacity: 0.95 },
-    labelBgPadding: [8, 5] as [number, number],
-    labelBgBorderRadius: 4,
-    markerEnd: { type: 'arrowclosed' as const, color: '#3f3f46', width: 16, height: 16 },
+    labelBgPadding: [10, 6] as [number, number],
+    labelBgBorderRadius: 6,
+    markerEnd: { type: 'arrowclosed' as const, color: '#52525b', width: 18, height: 18 },
   }));
 
   return { nodes: xyNodes, edges: xyEdges };

@@ -90,20 +90,23 @@ export function Sidebar({
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <div style={{
-              width: 24,
-              height: 24,
-              borderRadius: 6,
+              width: 26,
+              height: 26,
+              borderRadius: 7,
               background: 'var(--accent-dim)',
               border: '1px solid var(--border-accent)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
             }}>
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2.5">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2.5">
                 <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
               </svg>
             </div>
-            <span style={{ fontSize: 14, fontWeight: 700, letterSpacing: -0.3 }}>Logic Observer</span>
+            <div>
+              <span style={{ fontSize: 14, fontWeight: 700, letterSpacing: -0.3, display: 'block' }}>Business Flows</span>
+              <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>Process Viewer</span>
+            </div>
           </div>
           <button
             onClick={onToggle}
@@ -140,7 +143,7 @@ export function Sidebar({
           </svg>
           <input
             type="text"
-            placeholder="Search flows..."
+            placeholder="Search processes..."
             value={query}
             onChange={e => setQuery(e.target.value)}
             style={{
@@ -160,7 +163,7 @@ export function Sidebar({
         </div>
 
         <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 8 }}>
-          {filtered.length} of {flows.length} flows
+          {filtered.length} of {flows.length} process{flows.length !== 1 ? 'es' : ''}
         </div>
       </div>
 
@@ -168,6 +171,8 @@ export function Sidebar({
       <div style={{ flex: 1, overflowY: 'auto', padding: '6px 6px' }}>
         {filtered.map(flow => {
           const isActive = selected === flow.flow;
+          const stepCount = flow.nodes.filter(n => n.type === 'task').length;
+          const desc = flow.description?.slice(0, 80) || '';
           return (
             <button
               key={flow.flow}
@@ -184,7 +189,7 @@ export function Sidebar({
                 cursor: 'pointer',
                 background: isActive ? 'var(--accent-dim)' : 'transparent',
                 color: isActive ? 'var(--accent)' : 'var(--text-secondary)',
-                marginBottom: 1,
+                marginBottom: 2,
                 transition: 'all var(--transition)',
                 borderLeft: isActive ? '2px solid var(--accent)' : '2px solid transparent',
               }}
@@ -201,13 +206,40 @@ export function Sidebar({
                 }
               }}
             >
-              <div style={{ lineHeight: 1.4, marginBottom: 2 }}>{flow.title}</div>
+              <div style={{ lineHeight: 1.4, marginBottom: 3 }}>{flow.title}</div>
+              {desc && (
+                <div style={{
+                  fontSize: 10,
+                  color: 'var(--text-muted)',
+                  fontWeight: 400,
+                  lineHeight: 1.4,
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                  marginBottom: 3,
+                }}>
+                  {desc}{flow.description && flow.description.length > 80 ? '...' : ''}
+                </div>
+              )}
               <div style={{
                 fontSize: 10,
                 color: 'var(--text-muted)',
                 fontWeight: 400,
+                display: 'flex',
+                gap: 8,
               }}>
-                {flow.nodes.length} nodes
+                <span>{stepCount} step{stepCount !== 1 ? 's' : ''}</span>
+                <span style={{
+                  padding: '0 5px',
+                  borderRadius: 3,
+                  background: flow.status === 'verified' ? 'var(--green-dim)' : 'var(--amber-dim)',
+                  color: flow.status === 'verified' ? 'var(--green)' : 'var(--amber)',
+                  fontSize: 9,
+                  fontWeight: 600,
+                  textTransform: 'uppercase',
+                }}>
+                  {flow.status === 'verified' ? 'Verified' : 'Draft'}
+                </span>
               </div>
             </button>
           );
